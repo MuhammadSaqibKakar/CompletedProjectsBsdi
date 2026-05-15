@@ -444,6 +444,7 @@ async function hydrateProjectsWithLocalMedia(projects) {
 function serializeProjects(projects) {
   return projects.map((project) => ({
     ...project,
+    // Object URLs are session-only; keep the IndexedDB key and recreate URLs on load.
     media: (project.media || []).map((item) =>
       item.localBlob ? { ...item, src: '' } : item,
     ),
@@ -474,6 +475,7 @@ function collectDistrictCatalog(divisions = [], projects = []) {
 }
 
 function createDashboardSnapshot(projects, phases, divisions, baseData = {}) {
+  // This snapshot is the single shape used for local cache and server sync.
   const cleanedProjects = serializeProjects(projects.map(cleanProject))
   const cleanedPhases = cleanPhaseCatalog(phases, cleanedProjects)
   const cleanedDivisions = cleanDivisionCatalog(divisions, cleanedProjects)
@@ -526,6 +528,7 @@ function serializeDashboardState(projects, phases, divisions, baseData = {}) {
 }
 
 function readSavedDashboardState(dataset, options = {}) {
+  // Remote data wins unless there are unsynced local edits on this laptop.
   const shouldReadSaved = options.preferSaved !== false
   if (!shouldReadSaved) {
     return {
@@ -580,6 +583,7 @@ function createApiUnavailableError(message = API_UNAVAILABLE_MESSAGE, status = 0
 }
 
 function isApiUnavailableError(error) {
+  // A 404 here usually means the app was deployed as static frontend only.
   return error?.code === 'API_UNAVAILABLE' || error?.status === 404
 }
 
@@ -643,6 +647,7 @@ async function loadDashboardDataset() {
     }
   }
 
+  // Fallback keeps demo/static/offline installs usable even without the API.
   const dbResponse = await fetch('/database/bsdi-db.json')
   if (dbResponse.ok) {
     return {
@@ -2740,6 +2745,7 @@ export default function App() {
     nextDivisions = divisionCatalog,
     dataContext = baseData,
   ) {
+    // Local storage is the offline meeting cache and also holds pending edits.
     const snapshot = serializeDashboardState(nextProjects, nextPhases, nextDivisions, dataContext || {})
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
     return snapshot
@@ -2781,6 +2787,7 @@ export default function App() {
   }
 
   function queueSnapshotSync(snapshot, successTitle = 'Synced online') {
+    // Save is never blocked by connectivity: failed sync becomes a pending local edit.
     if (!navigator.onLine) {
       markPendingSync('Offline changes waiting to sync')
       notify('Saved offline', 'This laptop has the latest edit. Use Sync when internet is available.', 'info')
@@ -2813,6 +2820,7 @@ export default function App() {
     if (syncBusy) return
     setSyncBusy(true)
     try {
+      // Static deployments can still show the dashboard, but shared sync needs /api/state.
       if (!syncAvailable) {
         const canSync = await checkSyncServerAvailable()
         if (!canSync) {

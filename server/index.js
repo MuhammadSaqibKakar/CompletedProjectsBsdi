@@ -17,6 +17,8 @@ const liveDbPath = path.join(dataDir, 'bsdi-db.json')
 const port = Number(process.env.PORT || 4174)
 const uploadLimit = Number(process.env.BSDI_MAX_UPLOAD_BYTES || 1024 * 1024 * 1024)
 
+// The active DB and uploaded media must live outside dist/public so redeploys
+// can replace code without wiping user-added data.
 fsSync.mkdirSync(dataDir, { recursive: true })
 fsSync.mkdirSync(mediaDir, { recursive: true })
 fsSync.mkdirSync(tempDir, { recursive: true })
@@ -69,17 +71,20 @@ async function writeJsonAtomic(filePath, data) {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   const tempPath = `${filePath}.${Date.now()}.tmp`
   await fs.writeFile(tempPath, JSON.stringify(data, null, 2))
+  // Atomic rename avoids half-written JSON if the process stops during save.
   await fs.rename(tempPath, filePath)
 }
 
 async function readDashboardState() {
   if (fsSync.existsSync(liveDbPath)) return readJson(liveDbPath)
+  // First boot seeds persistent storage from the bundled database.
   const bundled = await readJson(bundledDbPath)
   await writeJsonAtomic(liveDbPath, bundled)
   return bundled
 }
 
 function getPasswordFromState(state) {
+  // Keep the admin password in the DB/state only; do not hard-code it in code.
   return (
     state?.settings?.adminPassword ||
     state?.settings?.admin?.password ||
@@ -190,6 +195,8 @@ app.post('/api/media', upload.array('files', 200), async (req, res, next) => {
   try {
     await assertAdminPassword(req)
 
+    // Store uploaded media by stable project ID so records can move in the DB
+    // without breaking their image/video links.
     const projectId = sanitizePathPart(req.body.projectId, `project-${Date.now()}`)
     const mediaType = req.body.mediaType === 'video' ? 'video' : 'image'
     const startingOrder = Number(req.body.startingOrder || 0)
