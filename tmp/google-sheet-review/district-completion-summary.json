@@ -1,0 +1,326 @@
+﻿[
+    {
+        "district":  "Awaran",
+        "phase1Completed":  80,
+        "phase1Remaining":  13,
+        "phase1Amount":  551.1,
+        "phase2Completed":  0,
+        "phase2Remaining":  26,
+        "phase2Amount":  179.72
+    },
+    {
+        "district":  "Barkhan",
+        "phase1Completed":  2,
+        "phase1Remaining":  37,
+        "phase1Amount":  523.09,
+        "phase2Completed":  0,
+        "phase2Remaining":  41,
+        "phase2Amount":  171.5
+    },
+    {
+        "district":  "Chaman",
+        "phase1Completed":  15,
+        "phase1Remaining":  27,
+        "phase1Amount":  370,
+        "phase2Completed":  2,
+        "phase2Remaining":  34,
+        "phase2Amount":  399.13
+    },
+    {
+        "district":  "Chaghai",
+        "phase1Completed":  4,
+        "phase1Remaining":  2,
+        "phase1Amount":  311,
+        "phase2Completed":  1,
+        "phase2Remaining":  23,
+        "phase2Amount":  494.46
+    },
+    {
+        "district":  "Dera Bugti",
+        "phase1Completed":  8,
+        "phase1Remaining":  19,
+        "phase1Amount":  484.95,
+        "phase2Completed":  0,
+        "phase2Remaining":  15,
+        "phase2Amount":  281.36
+    },
+    {
+        "district":  "Duki",
+        "phase1Completed":  7,
+        "phase1Remaining":  11,
+        "phase1Amount":  352.72,
+        "phase2Completed":  0,
+        "phase2Remaining":  29,
+        "phase2Amount":  357.29
+    },
+    {
+        "district":  "Gawadar",
+        "phase1Completed":  5,
+        "phase1Remaining":  10,
+        "phase1Amount":  426.33,
+        "phase2Completed":  0,
+        "phase2Remaining":  35,
+        "phase2Amount":  438.83
+    },
+    {
+        "district":  "Harnai",
+        "phase1Completed":  5,
+        "phase1Remaining":  13,
+        "phase1Amount":  425,
+        "phase2Completed":  0,
+        "phase2Remaining":  26,
+        "phase2Amount":  285.18
+    },
+    {
+        "district":  "Hub",
+        "phase1Completed":  3,
+        "phase1Remaining":  14,
+        "phase1Amount":  296.67,
+        "phase2Completed":  0,
+        "phase2Remaining":  20,
+        "phase2Amount":  454.99
+    },
+    {
+        "district":  "Jaffarabad",
+        "phase1Completed":  5,
+        "phase1Remaining":  14,
+        "phase1Amount":  317,
+        "phase2Completed":  0,
+        "phase2Remaining":  26,
+        "phase2Amount":  446.17
+    },
+    {
+        "district":  "Jhal Magsi",
+        "phase1Completed":  0,
+        "phase1Remaining":  6,
+        "phase1Amount":  455,
+        "phase2Completed":  0,
+        "phase2Remaining":  36,
+        "phase2Amount":  260.86
+    },
+    {
+        "district":  "Kachhi",
+        "phase1Completed":  22,
+        "phase1Remaining":  44,
+        "phase1Amount":  283.04,
+        "phase2Completed":  0,
+        "phase2Remaining":  64,
+        "phase2Amount":  349.48
+    },
+    {
+        "district":  "Kalat",
+        "phase1Completed":  5,
+        "phase1Remaining":  30,
+        "phase1Amount":  377.86,
+        "phase2Completed":  0,
+        "phase2Remaining":  37,
+        "phase2Amount":  356.34
+    },
+    {
+        "district":  "Kech",
+        "phase1Completed":  33,
+        "phase1Remaining":  14,
+        "phase1Amount":  534.89,
+        "phase2Completed":  0,
+        "phase2Remaining":  34,
+        "phase2Amount":  406.85
+    },
+    {
+        "district":  "Kharan",
+        "phase1Completed":  4,
+        "phase1Remaining":  9,
+        "phase1Amount":  379.48,
+        "phase2Completed":  0,
+        "phase2Remaining":  17,
+        "phase2Amount":  469.88
+    },
+    {
+        "district":  "Khuzdar",
+        "phase1Completed":  9,
+        "phase1Remaining":  29,
+        "phase1Amount":  534.65,
+        "phase2Completed":  2,
+        "phase2Remaining":  40,
+        "phase2Amount":  423.78
+    },
+    {
+        "district":  "Killa Abdullah",
+        "phase1Completed":  2,
+        "phase1Remaining":  6,
+        "phase1Amount":  370,
+        "phase2Completed":  0,
+        "phase2Remaining":  7,
+        "phase2Amount":  352.93
+    },
+    {
+        "district":  "Killa Saifullah",
+        "phase1Completed":  0,
+        "phase1Remaining":  7,
+        "phase1Amount":  290,
+        "phase2Completed":  0,
+        "phase2Remaining":  46,
+        "phase2Amount":  564.75
+    },
+    {
+        "district":  "Kohlu",
+        "phase1Completed":  2,
+        "phase1Remaining":  22,
+        "phase1Amount":  359.2,
+        "phase2Completed":  0,
+        "phase2Remaining":  58,
+        "phase2Amount":  326.31
+    },
+    {
+        "district":  "Lasbela",
+        "phase1Completed":  15,
+        "phase1Remaining":  12,
+        "phase1Amount":  348.81,
+        "phase2Completed":  0,
+        "phase2Remaining":  11,
+        "phase2Amount":  474.12
+    },
+    {
+        "district":  "Loralai",
+        "phase1Completed":  2,
+        "phase1Remaining":  6,
+        "phase1Amount":  293.73,
+        "phase2Completed":  0,
+        "phase2Remaining":  8,
+        "phase2Amount":  467.76
+    },
+    {
+        "district":  "Mastung",
+        "phase1Completed":  5,
+        "phase1Remaining":  9,
+        "phase1Amount":  335,
+        "phase2Completed":  0,
+        "phase2Remaining":  34,
+        "phase2Amount":  476.3
+    },
+    {
+        "district":  "Musa Khel",
+        "phase1Completed":  4,
+        "phase1Remaining":  10,
+        "phase1Amount":  359,
+        "phase2Completed":  0,
+        "phase2Remaining":  102,
+        "phase2Amount":  347.35
+    },
+    {
+        "district":  "Naseerabad",
+        "phase1Completed":  15,
+        "phase1Remaining":  31,
+        "phase1Amount":  389.5,
+        "phase2Completed":  0,
+        "phase2Remaining":  32,
+        "phase2Amount":  355.88
+    },
+    {
+        "district":  "Noushki",
+        "phase1Completed":  2,
+        "phase1Remaining":  12,
+        "phase1Amount":  415,
+        "phase2Completed":  0,
+        "phase2Remaining":  1,
+        "phase2Amount":  29.26
+    },
+    {
+        "district":  "Panjgur",
+        "phase1Completed":  12,
+        "phase1Remaining":  25,
+        "phase1Amount":  296.5,
+        "phase2Completed":  0,
+        "phase2Remaining":  44,
+        "phase2Amount":  543
+    },
+    {
+        "district":  "Pishin",
+        "phase1Completed":  10,
+        "phase1Remaining":  33,
+        "phase1Amount":  441,
+        "phase2Completed":  0,
+        "phase2Remaining":  30,
+        "phase2Amount":  510.61
+    },
+    {
+        "district":  "Quetta",
+        "phase1Completed":  0,
+        "phase1Remaining":  0,
+        "phase1Amount":  0,
+        "phase2Completed":  0,
+        "phase2Remaining":  1,
+        "phase2Amount":  60
+    },
+    {
+        "district":  "Sherani",
+        "phase1Completed":  46,
+        "phase1Remaining":  21,
+        "phase1Amount":  446.49,
+        "phase2Completed":  0,
+        "phase2Remaining":  50,
+        "phase2Amount":  247.5
+    },
+    {
+        "district":  "Sibi",
+        "phase1Completed":  10,
+        "phase1Remaining":  4,
+        "phase1Amount":  431.52,
+        "phase2Completed":  6,
+        "phase2Remaining":  79,
+        "phase2Amount":  333.07
+    },
+    {
+        "district":  "Sohbatpur",
+        "phase1Completed":  14,
+        "phase1Remaining":  8,
+        "phase1Amount":  164.66,
+        "phase2Completed":  2,
+        "phase2Remaining":  49,
+        "phase2Amount":  533.07
+    },
+    {
+        "district":  "Surab",
+        "phase1Completed":  1,
+        "phase1Remaining":  7,
+        "phase1Amount":  210,
+        "phase2Completed":  0,
+        "phase2Remaining":  27,
+        "phase2Amount":  507
+    },
+    {
+        "district":  "Usta Muhammad",
+        "phase1Completed":  2,
+        "phase1Remaining":  1,
+        "phase1Amount":  32,
+        "phase2Completed":  0,
+        "phase2Remaining":  79,
+        "phase2Amount":  629.59
+    },
+    {
+        "district":  "Washuk",
+        "phase1Completed":  13,
+        "phase1Remaining":  13,
+        "phase1Amount":  437.51,
+        "phase2Completed":  0,
+        "phase2Remaining":  26,
+        "phase2Amount":  419.38
+    },
+    {
+        "district":  "Zhob",
+        "phase1Completed":  7,
+        "phase1Remaining":  16,
+        "phase1Amount":  491.5,
+        "phase2Completed":  0,
+        "phase2Remaining":  44,
+        "phase2Amount":  320.72
+    },
+    {
+        "district":  "Ziarat",
+        "phase1Completed":  2,
+        "phase1Remaining":  9,
+        "phase1Amount":  280,
+        "phase2Completed":  0,
+        "phase2Remaining":  37,
+        "phase2Amount":  438.2
+    }
+]
