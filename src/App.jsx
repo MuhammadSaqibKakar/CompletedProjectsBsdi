@@ -43,6 +43,7 @@ const MEDIA_DB_NAME = 'bsdi-dashboard-media'
 const MEDIA_STORE_NAME = 'files'
 const API_STATE_ENDPOINT = '/api/state'
 const API_MEDIA_ENDPOINT = '/api/media'
+const API_UNAVAILABLE_MESSAGE = 'Shared sync server is not enabled on this deployment'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
 const LANDMARK_CARDS = [
   { src: '/brand/landmark-gate.png', alt: 'Balochistan gateway landmark' },
@@ -571,24 +572,58 @@ function readSavedDashboardState(dataset, options = {}) {
   }
 }
 
+function createApiUnavailableError(message = API_UNAVAILABLE_MESSAGE, status = 0) {
+  const error = new Error(message)
+  error.code = 'API_UNAVAILABLE'
+  error.status = status
+  return error
+}
+
+function isApiUnavailableError(error) {
+  return error?.code === 'API_UNAVAILABLE' || error?.status === 404
+}
+
 async function fetchJsonFromApi(url, options = {}) {
-  const response = await fetch(url, {
-    cache: 'no-store',
-    ...options,
-  })
+  let response
+  try {
+    response = await fetch(url, {
+      cache: 'no-store',
+      ...options,
+    })
+  } catch (error) {
+    const networkError = new Error(error.message || 'Network request failed')
+    networkError.code = 'NETWORK_ERROR'
+    throw networkError
+  }
+
   const contentType = response.headers.get('content-type') || ''
+  if (response.status === 404) {
+    throw createApiUnavailableError(API_UNAVAILABLE_MESSAGE, response.status)
+  }
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`
     if (contentType.includes('application/json')) {
       const body = await response.json()
       message = body.error || message
     }
-    throw new Error(message)
+    const error = new Error(message)
+    error.status = response.status
+    throw error
   }
   if (!contentType.includes('application/json')) {
-    throw new Error('Sync server is not available')
+    throw createApiUnavailableError(API_UNAVAILABLE_MESSAGE, response.status)
   }
   return response.json()
+}
+
+async function checkSyncServerAvailable() {
+  try {
+    await fetchJsonFromApi(API_STATE_ENDPOINT)
+    return true
+  } catch (error) {
+    if (isApiUnavailableError(error)) return false
+    throw error
+  }
 }
 
 async function loadRemoteDashboardDataset() {
@@ -597,18 +632,25 @@ async function loadRemoteDashboardDataset() {
 }
 
 async function loadDashboardDataset() {
+  let apiError = null
   if (navigator.onLine) {
     try {
       const dataset = await loadRemoteDashboardDataset()
-      return { dataset, source: 'remote' }
-    } catch {
+      return { dataset, source: 'remote', syncAvailable: true, apiError: null }
+    } catch (error) {
+      apiError = error
       // Static hosting still works without the API; the app will use cached/source data.
     }
   }
 
   const dbResponse = await fetch('/database/bsdi-db.json')
   if (dbResponse.ok) {
-    return { dataset: normalizeDataset(await dbResponse.json()), source: 'bundled' }
+    return {
+      dataset: normalizeDataset(await dbResponse.json()),
+      source: 'bundled',
+      syncAvailable: false,
+      apiError,
+    }
   }
 
   throw new Error('Unable to load BSDI database')
@@ -2496,6 +2538,7 @@ export default function App() {
     lastSyncedAt: localStorage.getItem(LAST_SYNC_KEY) || '',
     pending: localStorage.getItem(PENDING_SYNC_KEY) === 'true',
   })
+  const [syncAvailable, setSyncAvailable] = useState(false)
   const [syncBusy, setSyncBusy] = useState(false)
 
   const notify = useCallback((title, message = '', type = 'success') => {
@@ -2535,7 +2578,7 @@ export default function App() {
   useEffect(() => {
     async function load() {
       try {
-        const { dataset, source } = await loadDashboardDataset()
+        const { dataset, source, syncAvailable: canSync, apiError } = await loadDashboardDataset()
         const hasPendingLocalEdits = localStorage.getItem(PENDING_SYNC_KEY) === 'true'
         const savedState = readSavedDashboardState(dataset, {
           preferSaved: source !== 'remote' || hasPendingLocalEdits,
@@ -2547,15 +2590,27 @@ export default function App() {
         setPhaseCatalog(savedState.phases)
         setDivisionCatalog(savedState.divisions)
         setSelectedId(hydratedProjects[0]?.id || '')
+        setSyncAvailable(canSync)
         setSyncState((current) => ({
           ...current,
-          mode: source === 'remote' && !hasPendingLocalEdits ? 'live' : 'local',
+          mode:
+            source === 'remote' && !hasPendingLocalEdits
+              ? 'live'
+              : canSync && hasPendingLocalEdits
+                ? 'pending'
+                : isApiUnavailableError(apiError)
+                  ? 'viewOnly'
+                  : 'local',
           message:
             source === 'remote' && !hasPendingLocalEdits
               ? 'Shared database loaded'
               : hasPendingLocalEdits
-                ? 'Local edits waiting to sync'
-                : 'Local offline database loaded',
+                ? canSync
+                  ? 'Local edits waiting to sync'
+                  : 'Local edits saved here; shared sync needs the Node deployment'
+                : isApiUnavailableError(apiError)
+                  ? 'This deployment is serving the frontend only. Deploy as a Node Web Service to enable sync.'
+                  : 'Local offline database loaded',
           pending: hasPendingLocalEdits,
           lastSyncedAt:
             source === 'remote' ? new Date().toISOString() : current.lastSyncedAt,
@@ -2609,9 +2664,19 @@ export default function App() {
       setOnline(isOnline)
       setSyncState((current) => ({
         ...current,
-        mode: isOnline ? (current.pending ? 'pending' : current.mode === 'offline' ? 'local' : current.mode) : 'offline',
+        mode: isOnline
+          ? current.mode === 'viewOnly'
+            ? 'viewOnly'
+            : current.pending
+              ? 'pending'
+              : current.mode === 'offline'
+                ? 'local'
+                : current.mode
+          : 'offline',
         message: isOnline
-          ? current.pending
+          ? current.mode === 'viewOnly'
+            ? current.message
+            : current.pending
             ? 'Local edits waiting to sync'
             : current.message
           : 'Offline meeting mode',
@@ -2684,7 +2749,7 @@ export default function App() {
     localStorage.setItem(PENDING_SYNC_KEY, 'true')
     setSyncState((current) => ({
       ...current,
-      mode: online ? 'pending' : 'offline',
+      mode: online ? (syncAvailable ? 'pending' : 'viewOnly') : 'offline',
       message,
       pending: true,
     }))
@@ -2722,11 +2787,23 @@ export default function App() {
       return
     }
 
+    if (!syncAvailable) {
+      markPendingSync('Saved locally. Shared sync needs the Node Web Service deployment.')
+      notify('Saved locally', 'This deployment is frontend-only, so shared sync is not active yet.', 'info')
+      return
+    }
+
     pushSnapshotToServer(snapshot)
       .then(() => {
         notify(successTitle, 'Other online laptops can now sync this update.', 'success')
       })
       .catch((error) => {
+        if (isApiUnavailableError(error)) {
+          setSyncAvailable(false)
+          markPendingSync('Saved locally. Shared sync needs the Node Web Service deployment.')
+          notify('Saved locally', 'Shared sync is not enabled on this deployment yet.', 'info')
+          return
+        }
         markPendingSync(error.message || 'Online sync failed')
         notify('Saved locally', error.message || 'Online sync failed. Try Sync latest again.', 'info')
       })
@@ -2736,6 +2813,26 @@ export default function App() {
     if (syncBusy) return
     setSyncBusy(true)
     try {
+      if (!syncAvailable) {
+        const canSync = await checkSyncServerAvailable()
+        if (!canSync) {
+          setSyncState((current) => ({
+            ...current,
+            mode: 'viewOnly',
+            message: 'This deployment is serving the frontend only. Deploy as a Node Web Service to enable sync.',
+          }))
+          if (!options.quiet) {
+            notify(
+              'Sync server not enabled',
+              'Render is serving the frontend only. Create/deploy the Node Web Service to use shared sync.',
+              'info',
+            )
+          }
+          return
+        }
+        setSyncAvailable(true)
+      }
+
       const localSnapshot = persistState(projects, phaseCatalog, divisionCatalog)
       const hasPending = localStorage.getItem(PENDING_SYNC_KEY) === 'true'
       if (hasPending && adminSessionPassword && !options.forcePull) {
@@ -2765,6 +2862,22 @@ export default function App() {
       })
       if (!options.quiet) notify('Sync complete', 'This laptop now has the latest shared data.', 'success')
     } catch (error) {
+      if (isApiUnavailableError(error)) {
+        setSyncAvailable(false)
+        setSyncState((current) => ({
+          ...current,
+          mode: 'viewOnly',
+          message: 'This deployment is serving the frontend only. Deploy as a Node Web Service to enable sync.',
+        }))
+        if (!options.quiet) {
+          notify(
+            'Sync server not enabled',
+            'Render is serving the frontend only. Create/deploy the Node Web Service to use shared sync.',
+            'info',
+          )
+        }
+        return
+      }
       setSyncState((current) => ({
         ...current,
         mode: navigator.onLine ? 'local' : 'offline',
@@ -2778,6 +2891,7 @@ export default function App() {
 
   async function uploadProjectMedia(projectId, files, mediaType, startingOrder = 0, startingTypeCount = 0) {
     if (!navigator.onLine) throw new Error('Media upload needs internet')
+    if (!syncAvailable) throw new Error('Shared media upload needs the Node Web Service deployment')
     if (!adminSessionPassword) throw new Error('Unlock admin again before online media upload')
 
     const body = new FormData()
@@ -2886,14 +3000,20 @@ export default function App() {
     adminAuthed ? { id: 'admin', label: 'Data Editor', icon: ShieldCheck } : null,
   ].filter(Boolean)
   const visibleActiveTab = activeTab === 'admin' && !adminAuthed ? 'insights' : activeTab
-  const SyncIcon = syncState.mode === 'offline' ? CloudOff : Cloud
+  const SyncIcon = syncState.mode === 'offline' || syncState.mode === 'viewOnly' ? CloudOff : Cloud
   const syncLabel = syncState.pending
     ? 'Pending sync'
     : syncState.mode === 'live'
       ? 'Synced'
       : syncState.mode === 'checking'
         ? 'Checking sync'
-        : 'Local cache'
+        : syncState.mode === 'viewOnly'
+          ? 'View-only'
+          : 'Local cache'
+  const syncButtonText = syncBusy ? 'Syncing' : syncAvailable ? 'Sync' : 'Check'
+  const syncButtonTitle = syncAvailable
+    ? 'Upload pending edits, then load the latest shared database'
+    : 'Check whether the shared Node sync server is available'
 
   if (loadError) {
     return (
@@ -2988,10 +3108,10 @@ export default function App() {
                   onClick={() => syncLatest()}
                   disabled={!online || syncBusy}
                   className="inline-flex h-7 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 text-xs font-semibold text-white/80 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
-                  title="Upload pending edits, then load the latest shared database"
+                  title={syncButtonTitle}
                 >
                   <RefreshCw size={12} className={syncBusy ? 'animate-spin' : ''} />
-                  Sync
+                  {syncButtonText}
                 </button>
               </div>
               <div className="mt-3 flex min-w-0 items-center gap-3">

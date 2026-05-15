@@ -52,6 +52,8 @@ Environment Variable: BSDI_DATA_DIR=/var/data/bsdi
 
 `render.yaml` is included for this setup.
 
+If the header shows `View-only` or the Sync button only says `Check`, the site is being served without the Node API. In Render, create/deploy it as a **Web Service** so `/api/state` is available. Static Site deployments can still display the dashboard, but they cannot share admin edits between laptops.
+
 ## Admin
 
 Open the hidden admin panel with `Ctrl + Shift + E`.
