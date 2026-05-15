@@ -96,7 +96,7 @@ Open:
 http://127.0.0.1:5173/
 ```
 
-Frontend-only dev mode can view the dashboard, but `/api/state` will not exist. Sync will show `View-only` or `Check` until the Node server is running.
+Frontend-only dev mode can view the dashboard, but `/api/state` will not exist. Sync controls stay hidden until the Node server is running or there are pending admin edits.
 
 ## Local Shared Server
 
@@ -149,14 +149,12 @@ The app has three data layers:
 
 Admin edits save locally first. If the shared Node API is available, the app pushes the updated database to `/api/state`. If the user is offline or the deployment is frontend-only, edits stay on that laptop as pending local changes.
 
-The header sync states mean:
+The header sync states appear only when shared sync is available or local edits are waiting:
 
 | State | Meaning |
 | --- | --- |
 | `Synced` | Shared Node API loaded successfully |
 | `Pending sync` | Local edits exist and need upload |
-| `View-only` | The frontend is live but the Node API is not deployed |
-| `Local cache` | App is using local/bundled data |
 | `Offline` | Browser is offline and using cached data |
 
 ## Offline Meeting Mode
@@ -188,7 +186,7 @@ Environment Variable: BSDI_DATA_DIR=/var/data/bsdi
 
 `render.yaml` is included for this setup.
 
-If the deployed site shows `View-only` or the Sync button says `Check`, Render is serving only the frontend and `/api/state` is missing. Redeploy as a Node Web Service.
+If no sync controls appear, Render may be serving only the frontend and `/api/state` may be missing. Redeploy as a Node Web Service for shared editing.
 
 ### Hostinger
 
@@ -247,7 +245,7 @@ npm run tauri dev    # Desktop app dev shell
 
 ## Troubleshooting
 
-### Sync failed or View-only
+### Sync controls are missing or shared edits do not sync
 
 Cause: `/api/state` is not available.
 

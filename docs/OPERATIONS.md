@@ -68,7 +68,7 @@ media-YYYY-MM-DD.zip
 ## Offline Meeting Checklist
 
 1. Open the deployed app while online.
-2. Confirm the header says `Synced`.
+2. Confirm the header says `Synced` when the Node API is enabled.
 3. Press `Sync` before leaving for the meeting.
 4. Open the important project media once so browser cache stores it.
 5. Install the PWA in Chrome/Edge if needed.
@@ -91,9 +91,9 @@ media-YYYY-MM-DD.zip
 | --- | --- | --- |
 | `Synced` | Shared DB loaded | No action |
 | `Pending sync` | Local edits need upload | Press Sync when online |
-| `View-only` | Node API missing | Deploy Node Web Service |
-| `Local cache` | Using cached/bundled data | Press Check/Sync when API is available |
 | `Offline` | Browser has no internet | Use cached data |
+
+If no sync state is visible, the dashboard is in clean viewing mode. Shared sync controls appear once the Node API is available or when an admin edit is waiting to upload.
 
 ## Common Issues
 

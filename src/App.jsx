@@ -3008,17 +3008,16 @@ export default function App() {
     adminAuthed ? { id: 'admin', label: 'Data Editor', icon: ShieldCheck } : null,
   ].filter(Boolean)
   const visibleActiveTab = activeTab === 'admin' && !adminAuthed ? 'insights' : activeTab
-  const SyncIcon = syncState.mode === 'offline' || syncState.mode === 'viewOnly' ? CloudOff : Cloud
+  const showSyncControls = syncAvailable || syncState.pending || syncState.mode === 'live' || syncBusy
+  const SyncIcon = syncState.mode === 'offline' ? CloudOff : Cloud
   const syncLabel = syncState.pending
     ? 'Pending sync'
     : syncState.mode === 'live'
       ? 'Synced'
-      : syncState.mode === 'checking'
-        ? 'Checking sync'
-        : syncState.mode === 'viewOnly'
-          ? 'View-only'
-          : 'Local cache'
-  const syncButtonText = syncBusy ? 'Syncing' : syncAvailable ? 'Sync' : 'Check'
+      : syncBusy
+        ? 'Syncing'
+        : 'Sync'
+  const syncButtonText = syncBusy ? 'Syncing' : 'Sync'
   const syncButtonTitle = syncAvailable
     ? 'Upload pending edits, then load the latest shared database'
     : 'Check whether the shared Node sync server is available'
@@ -3098,29 +3097,33 @@ export default function App() {
                   <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-white/30'}`} />
                   {online ? 'Online' : 'Offline'}
                 </span>
-                <span
-                  className={`inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                    syncState.pending
-                      ? 'border-amber-300/30 bg-amber-300/10 text-amber-200'
-                      : syncState.mode === 'live'
-                        ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                        : 'border-white/10 bg-white/8 text-white/60'
-                  }`}
-                  title={syncState.message}
-                >
-                  <SyncIcon size={12} />
-                  <span className="truncate">{syncLabel}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => syncLatest()}
-                  disabled={!online || syncBusy}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 text-xs font-semibold text-white/80 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
-                  title={syncButtonTitle}
-                >
-                  <RefreshCw size={12} className={syncBusy ? 'animate-spin' : ''} />
-                  {syncButtonText}
-                </button>
+                {showSyncControls ? (
+                  <>
+                    <span
+                      className={`inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                        syncState.pending
+                          ? 'border-amber-300/30 bg-amber-300/10 text-amber-200'
+                          : syncState.mode === 'live'
+                            ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                            : 'border-white/10 bg-white/8 text-white/60'
+                      }`}
+                      title={syncState.message}
+                    >
+                      <SyncIcon size={12} />
+                      <span className="truncate">{syncLabel}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => syncLatest()}
+                      disabled={!online || syncBusy}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 text-xs font-semibold text-white/80 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      title={syncButtonTitle}
+                    >
+                      <RefreshCw size={12} className={syncBusy ? 'animate-spin' : ''} />
+                      {syncButtonText}
+                    </button>
+                  </>
+                ) : null}
               </div>
               <div className="mt-3 flex min-w-0 items-center gap-3">
                 <img
