@@ -87,13 +87,12 @@ media-YYYY-MM-DD.zip
 
 ## Sync States
 
-| Header state | Meaning | Action |
+| Sync state | Meaning | Action |
 | --- | --- | --- |
 | `Synced` | Shared DB loaded | No action |
 | `Pending sync` | Local edits need upload | Press Sync when online |
-| `Offline` | Browser has no internet | Use cached data |
 
-If no sync state is visible, the dashboard is in clean viewing mode. Shared sync controls appear once the Node API is available or when an admin edit is waiting to upload.
+The Sync button stays visible. The Online/Offline pill shows internet status separately. The old local-cache label is intentionally hidden because the cache is an internal offline feature, not a user workflow.
 
 ## Common Issues
 

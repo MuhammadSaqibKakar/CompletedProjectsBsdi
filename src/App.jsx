@@ -16,6 +16,7 @@ import {
   FileJson,
   FolderOpen,
   Image as ImageIcon,
+  Info,
   LockKeyhole,
   MapPin,
   MapPinned,
@@ -988,7 +989,7 @@ function ToastStack({ notifications, onDismiss }) {
                   isError ? 'bg-red-500' : isInfo ? 'bg-sky-500' : 'bg-emerald-600'
                 }`}
               >
-                {isError ? <X size={15} /> : <Check size={15} />}
+                {isError ? <X size={15} /> : isInfo ? <Info size={15} /> : <Check size={15} />}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-slate-900">{item.title}</p>
@@ -2832,7 +2833,7 @@ export default function App() {
           if (!options.quiet) {
             notify(
               'Sync server not enabled',
-              'Render is serving the frontend only. Create/deploy the Node Web Service to use shared sync.',
+              'This deployment is serving only the frontend. Deploy/run the Node Web Service to use shared sync.',
               'info',
             )
           }
@@ -2880,7 +2881,7 @@ export default function App() {
         if (!options.quiet) {
           notify(
             'Sync server not enabled',
-            'Render is serving the frontend only. Create/deploy the Node Web Service to use shared sync.',
+            'This deployment is serving only the frontend. Deploy/run the Node Web Service to use shared sync.',
             'info',
           )
         }
@@ -3008,7 +3009,6 @@ export default function App() {
     adminAuthed ? { id: 'admin', label: 'Data Editor', icon: ShieldCheck } : null,
   ].filter(Boolean)
   const visibleActiveTab = activeTab === 'admin' && !adminAuthed ? 'insights' : activeTab
-  const showSyncControls = syncAvailable || syncState.pending || syncState.mode === 'live' || syncBusy
   const SyncIcon = syncState.mode === 'offline' ? CloudOff : Cloud
   const syncLabel = syncState.pending
     ? 'Pending sync'
@@ -3016,11 +3016,11 @@ export default function App() {
       ? 'Synced'
       : syncBusy
         ? 'Syncing'
-        : 'Sync'
+        : ''
   const syncButtonText = syncBusy ? 'Syncing' : 'Sync'
   const syncButtonTitle = syncAvailable
     ? 'Upload pending edits, then load the latest shared database'
-    : 'Check whether the shared Node sync server is available'
+    : 'Sync with the shared database when the Node server is available'
 
   if (loadError) {
     return (
@@ -3097,33 +3097,31 @@ export default function App() {
                   <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-white/30'}`} />
                   {online ? 'Online' : 'Offline'}
                 </span>
-                {showSyncControls ? (
-                  <>
-                    <span
-                      className={`inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                        syncState.pending
-                          ? 'border-amber-300/30 bg-amber-300/10 text-amber-200'
-                          : syncState.mode === 'live'
-                            ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                            : 'border-white/10 bg-white/8 text-white/60'
-                      }`}
-                      title={syncState.message}
-                    >
-                      <SyncIcon size={12} />
-                      <span className="truncate">{syncLabel}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => syncLatest()}
-                      disabled={!online || syncBusy}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 text-xs font-semibold text-white/80 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
-                      title={syncButtonTitle}
-                    >
-                      <RefreshCw size={12} className={syncBusy ? 'animate-spin' : ''} />
-                      {syncButtonText}
-                    </button>
-                  </>
+                {syncLabel ? (
+                  <span
+                    className={`inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                      syncState.pending
+                        ? 'border-amber-300/30 bg-amber-300/10 text-amber-200'
+                        : syncState.mode === 'live'
+                          ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                          : 'border-white/10 bg-white/8 text-white/60'
+                    }`}
+                    title={syncState.message}
+                  >
+                    <SyncIcon size={12} />
+                    <span className="truncate">{syncLabel}</span>
+                  </span>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => syncLatest()}
+                  disabled={!online || syncBusy}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 text-xs font-semibold text-white/80 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
+                  title={syncButtonTitle}
+                >
+                  <RefreshCw size={12} className={syncBusy ? 'animate-spin' : ''} />
+                  {syncButtonText}
+                </button>
               </div>
               <div className="mt-3 flex min-w-0 items-center gap-3">
                 <img
