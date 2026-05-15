@@ -13,6 +13,7 @@ backups
 *.backup-*
 tmp/dev-server
 public/media
+server-data
 
 node_modules
 dist

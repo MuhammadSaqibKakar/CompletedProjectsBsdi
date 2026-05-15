@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: bsdi-completed-projects
+    env: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: BSDI_DATA_DIR
+        value: /var/data/bsdi
+    disk:
+      name: bsdi-data
+      mountPath: /var/data
+      sizeGB: 10

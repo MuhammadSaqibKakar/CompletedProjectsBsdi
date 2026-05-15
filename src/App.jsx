@@ -10,6 +10,8 @@ import {
   Check,
   ChevronRight,
   CircleDollarSign,
+  Cloud,
+  CloudOff,
   ExternalLink,
   FileJson,
   FolderOpen,
@@ -19,6 +21,7 @@ import {
   MapPinned,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
   Save,
   ShieldCheck,
@@ -33,9 +36,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 const FALLBACK_ADMIN_PASSWORD = ''
 const STORAGE_KEY = 'bsdi-dashboard-state-v1'
+const PENDING_SYNC_KEY = 'bsdi-dashboard-pending-sync-v1'
+const LAST_SYNC_KEY = 'bsdi-dashboard-last-sync-v1'
 const LEGACY_PROJECT_KEYS = ['bsdi-dashboard-projects-v6', 'bsdi-dashboard-projects-v5']
 const MEDIA_DB_NAME = 'bsdi-dashboard-media'
 const MEDIA_STORE_NAME = 'files'
+const API_STATE_ENDPOINT = '/api/state'
+const API_MEDIA_ENDPOINT = '/api/media'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
 const LANDMARK_CARDS = [
   { src: '/brand/landmark-gate.png', alt: 'Balochistan gateway landmark' },
@@ -442,17 +449,91 @@ function serializeProjects(projects) {
   }))
 }
 
-function serializeDashboardState(projects, phases, divisions) {
+function collectDistrictCatalog(divisions = [], projects = []) {
+  const fromProjects = projects.map((project) => ({
+    id: toId(`${project.division}-${project.district}`),
+    name: project.district,
+    division: project.division,
+  }))
+  const fromDivisions = divisions.flatMap((division) =>
+    (division.districts || []).map((district) => ({
+      id: toId(`${division.name}-${district}`),
+      name: district,
+      division: division.name,
+    })),
+  )
+  const byKey = new Map()
+  for (const district of [...fromDivisions, ...fromProjects]) {
+    if (!district.name || !district.division) continue
+    byKey.set(`${district.division}::${district.name}`, district)
+  }
+  return [...byKey.values()].sort(
+    (a, b) => a.division.localeCompare(b.division) || a.name.localeCompare(b.name),
+  )
+}
+
+function createDashboardSnapshot(projects, phases, divisions, baseData = {}) {
+  const cleanedProjects = serializeProjects(projects.map(cleanProject))
+  const cleanedPhases = cleanPhaseCatalog(phases, cleanedProjects)
+  const cleanedDivisions = cleanDivisionCatalog(divisions, cleanedProjects)
+  const media = cleanedProjects.flatMap((project) => project.media || [])
+  const budgetMn = cleanedProjects.reduce((sum, project) => sum + parseCostToMillions(project.cost), 0)
+
   return {
-    version: 1,
+    ...(baseData.database || {}),
+    schemaVersion: Math.max(Number(baseData.database?.schemaVersion) || 0, 3),
+    databaseName: baseData.database?.databaseName || 'bsdi-completed-projects',
+    generatedAt: baseData.database?.generatedAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    phases: cleanPhaseCatalog(phases, projects),
-    divisions: cleanDivisionCatalog(divisions, projects),
-    projects: serializeProjects(projects),
+    source: {
+      ...(baseData.database?.source || {}),
+      ...(baseData.source || {}),
+    },
+    totals: {
+      ...(baseData.database?.totals || {}),
+      projects: cleanedProjects.length,
+      divisions: cleanedDivisions.length,
+      districts: collectDistrictCatalog(cleanedDivisions, cleanedProjects).length,
+      media: media.length,
+      images: media.filter((item) => item.type !== 'video').length,
+      videos: media.filter((item) => item.type === 'video').length,
+      budgetBn: Number((budgetMn / 1000).toFixed(3)),
+    },
+    phases: cleanedPhases,
+    divisions: cleanedDivisions,
+    districts: collectDistrictCatalog(cleanedDivisions, cleanedProjects),
+    projects: cleanedProjects,
+    media,
+    settings: {
+      adminPassword:
+        baseData.settings?.adminPassword ||
+        baseData.database?.settings?.adminPassword ||
+        FALLBACK_ADMIN_PASSWORD,
+      editable: {
+        phases: true,
+        divisions: true,
+        districts: true,
+        ...(baseData.settings?.editable || {}),
+        ...(baseData.database?.settings?.editable || {}),
+      },
+    },
   }
 }
 
-function readSavedDashboardState(dataset) {
+function serializeDashboardState(projects, phases, divisions, baseData = {}) {
+  return createDashboardSnapshot(projects, phases, divisions, baseData)
+}
+
+function readSavedDashboardState(dataset, options = {}) {
+  const shouldReadSaved = options.preferSaved !== false
+  if (!shouldReadSaved) {
+    return {
+      projects: dataset.projects || [],
+      phases: cleanPhaseCatalog(dataset.phases, dataset.projects),
+      divisions: cleanDivisionCatalog(dataset.divisions, dataset.projects),
+    }
+  }
+
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved) {
     const parsed = JSON.parse(saved)
@@ -490,10 +571,44 @@ function readSavedDashboardState(dataset) {
   }
 }
 
+async function fetchJsonFromApi(url, options = {}) {
+  const response = await fetch(url, {
+    cache: 'no-store',
+    ...options,
+  })
+  const contentType = response.headers.get('content-type') || ''
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`
+    if (contentType.includes('application/json')) {
+      const body = await response.json()
+      message = body.error || message
+    }
+    throw new Error(message)
+  }
+  if (!contentType.includes('application/json')) {
+    throw new Error('Sync server is not available')
+  }
+  return response.json()
+}
+
+async function loadRemoteDashboardDataset() {
+  const remote = await fetchJsonFromApi(API_STATE_ENDPOINT)
+  return normalizeDataset(remote)
+}
+
 async function loadDashboardDataset() {
+  if (navigator.onLine) {
+    try {
+      const dataset = await loadRemoteDashboardDataset()
+      return { dataset, source: 'remote' }
+    } catch {
+      // Static hosting still works without the API; the app will use cached/source data.
+    }
+  }
+
   const dbResponse = await fetch('/database/bsdi-db.json')
   if (dbResponse.ok) {
-    return normalizeDataset(await dbResponse.json())
+    return { dataset: normalizeDataset(await dbResponse.json()), source: 'bundled' }
   }
 
   throw new Error('Unable to load BSDI database')
@@ -1514,7 +1629,7 @@ function AdminModal({
       setError('')
       setPassword('')
       notify?.('Admin unlocked', 'Editor access is enabled.', 'success')
-      onUnlock?.()
+      onUnlock?.(password)
       return
     }
     setError('Password is incorrect')
@@ -1707,6 +1822,7 @@ function AdminPanel({
   onAddPhase,
   onAddDivision,
   onAddDistrict,
+  uploadProjectMedia,
   notify,
 }) {
   function districtOptionsFor(divisionName) {
@@ -1850,36 +1966,60 @@ function AdminPanel({
       const typeCount = existingMedia.filter((item) => item.type === mediaType).length
       const kind = mediaType === 'video' ? 'vid' : 'img'
       const timestamp = Date.now()
-      const uploaded = await Promise.all(
-        files.map(async (file, index) => {
-          const order = existingMedia.length + index + 1
-          const num = typeCount + index + 1
-          const mediaId = `${projectId}-upload-${kind}-${String(num).padStart(2, '0')}-${timestamp}`
-          await saveMediaBlob(mediaId, file)
-          return {
-            id: mediaId,
+      let uploaded = []
+
+      if (uploadProjectMedia && navigator.onLine) {
+        try {
+          uploaded = await uploadProjectMedia(
             projectId,
-            type: mediaType,
-            src: URL.createObjectURL(file),
-            name: file.name,
-            originalName: file.name,
-            mimeType: file.type,
-            size: file.size,
-            order,
-            uploaded: true,
-            localBlob: true,
-            storageKey: mediaId,
-          }
-        }),
-      )
+            files,
+            mediaType,
+            existingMedia.length,
+            typeCount,
+          )
+        } catch (remoteError) {
+          notify?.(
+            'Online media upload skipped',
+            `${remoteError.message || 'Server unavailable'} Saved on this laptop instead.`,
+            'info',
+          )
+        }
+      }
+
+      if (!uploaded.length) {
+        uploaded = await Promise.all(
+          files.map(async (file, index) => {
+            const order = existingMedia.length + index + 1
+            const num = typeCount + index + 1
+            const mediaId = `${projectId}-upload-${kind}-${String(num).padStart(2, '0')}-${timestamp}`
+            await saveMediaBlob(mediaId, file)
+            return {
+              id: mediaId,
+              projectId,
+              type: mediaType,
+              src: URL.createObjectURL(file),
+              name: file.name,
+              originalName: file.name,
+              mimeType: file.type,
+              size: file.size,
+              order,
+              uploaded: true,
+              localBlob: true,
+              storageKey: mediaId,
+            }
+          }),
+        )
+      }
       setForm((current) => ({
         ...current,
         id: projectId,
         media: [...existingMedia, ...uploaded],
       }))
       notify?.(
-        mediaType === 'video' ? 'Videos uploaded' : 'Images uploaded',
-        `${uploaded.length} file${uploaded.length === 1 ? '' : 's'} added to this project.`,
+        uploaded.some((item) => item.synced)
+          ? mediaType === 'video' ? 'Videos uploaded online' : 'Images uploaded online'
+          : mediaType === 'video' ? 'Videos uploaded locally' : 'Images uploaded locally',
+        `${uploaded.length} file${uploaded.length === 1 ? '' : 's'} added. Press Save to link it to the project.`,
         'success',
       )
       setError('')
@@ -2345,10 +2485,18 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('insights')
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminAuthed, setAdminAuthed] = useState(false)
+  const [adminSessionPassword, setAdminSessionPassword] = useState('')
   const [online, setOnline] = useState(navigator.onLine)
   const [loadError, setLoadError] = useState('')
   const [detailsFocusProjectId, setDetailsFocusProjectId] = useState('')
   const [notifications, setNotifications] = useState([])
+  const [syncState, setSyncState] = useState({
+    mode: 'checking',
+    message: 'Checking shared data',
+    lastSyncedAt: localStorage.getItem(LAST_SYNC_KEY) || '',
+    pending: localStorage.getItem(PENDING_SYNC_KEY) === 'true',
+  })
+  const [syncBusy, setSyncBusy] = useState(false)
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -2387,8 +2535,11 @@ export default function App() {
   useEffect(() => {
     async function load() {
       try {
-        const dataset = await loadDashboardDataset()
-        const savedState = readSavedDashboardState(dataset)
+        const { dataset, source } = await loadDashboardDataset()
+        const hasPendingLocalEdits = localStorage.getItem(PENDING_SYNC_KEY) === 'true'
+        const savedState = readSavedDashboardState(dataset, {
+          preferSaved: source !== 'remote' || hasPendingLocalEdits,
+        })
         const loadedProjects = savedState.projects.map(cleanProject)
         const hydratedProjects = await hydrateProjectsWithLocalMedia(loadedProjects)
         setBaseData(dataset)
@@ -2396,6 +2547,26 @@ export default function App() {
         setPhaseCatalog(savedState.phases)
         setDivisionCatalog(savedState.divisions)
         setSelectedId(hydratedProjects[0]?.id || '')
+        setSyncState((current) => ({
+          ...current,
+          mode: source === 'remote' && !hasPendingLocalEdits ? 'live' : 'local',
+          message:
+            source === 'remote' && !hasPendingLocalEdits
+              ? 'Shared database loaded'
+              : hasPendingLocalEdits
+                ? 'Local edits waiting to sync'
+                : 'Local offline database loaded',
+          pending: hasPendingLocalEdits,
+          lastSyncedAt:
+            source === 'remote' ? new Date().toISOString() : current.lastSyncedAt,
+        }))
+        if (source === 'remote' && !hasPendingLocalEdits) {
+          localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString())
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(serializeDashboardState(hydratedProjects, savedState.phases, savedState.divisions, dataset)),
+          )
+        }
       } catch (error) {
         setLoadError(error.message)
       }
@@ -2434,7 +2605,17 @@ export default function App() {
 
   useEffect(() => {
     function updateStatus() {
-      setOnline(navigator.onLine)
+      const isOnline = navigator.onLine
+      setOnline(isOnline)
+      setSyncState((current) => ({
+        ...current,
+        mode: isOnline ? (current.pending ? 'pending' : current.mode === 'offline' ? 'local' : current.mode) : 'offline',
+        message: isOnline
+          ? current.pending
+            ? 'Local edits waiting to sync'
+            : current.message
+          : 'Offline meeting mode',
+      }))
     }
     window.addEventListener('online', updateStatus)
     window.addEventListener('offline', updateStatus)
@@ -2488,11 +2669,133 @@ export default function App() {
     }
   }, [districts.length, phaseProjects])
 
-  function persistState(nextProjects = projects, nextPhases = phaseCatalog, nextDivisions = divisionCatalog) {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(serializeDashboardState(nextProjects, nextPhases, nextDivisions)),
-    )
+  function persistState(
+    nextProjects = projects,
+    nextPhases = phaseCatalog,
+    nextDivisions = divisionCatalog,
+    dataContext = baseData,
+  ) {
+    const snapshot = serializeDashboardState(nextProjects, nextPhases, nextDivisions, dataContext || {})
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
+    return snapshot
+  }
+
+  function markPendingSync(message = 'Saved on this laptop. Sync when internet/server is available.') {
+    localStorage.setItem(PENDING_SYNC_KEY, 'true')
+    setSyncState((current) => ({
+      ...current,
+      mode: online ? 'pending' : 'offline',
+      message,
+      pending: true,
+    }))
+  }
+
+  async function pushSnapshotToServer(snapshot, password = adminSessionPassword, options = {}) {
+    if (!navigator.onLine) throw new Error('No internet connection')
+    if (!password) throw new Error('Unlock admin again before syncing online')
+
+    const result = await fetchJsonFromApi(API_STATE_ENDPOINT, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-BSDI-Admin-Password': password,
+      },
+      body: JSON.stringify({ data: snapshot }),
+    })
+    const syncedAt = result.updatedAt || new Date().toISOString()
+    localStorage.removeItem(PENDING_SYNC_KEY)
+    localStorage.setItem(LAST_SYNC_KEY, syncedAt)
+    setSyncState({
+      mode: 'live',
+      message: options.message || 'Shared database synced',
+      lastSyncedAt: syncedAt,
+      pending: false,
+    })
+    if (result.data) setBaseData(normalizeDataset(result.data))
+    return result.data
+  }
+
+  function queueSnapshotSync(snapshot, successTitle = 'Synced online') {
+    if (!navigator.onLine) {
+      markPendingSync('Offline changes waiting to sync')
+      notify('Saved offline', 'This laptop has the latest edit. Use Sync when internet is available.', 'info')
+      return
+    }
+
+    pushSnapshotToServer(snapshot)
+      .then(() => {
+        notify(successTitle, 'Other online laptops can now sync this update.', 'success')
+      })
+      .catch((error) => {
+        markPendingSync(error.message || 'Online sync failed')
+        notify('Saved locally', error.message || 'Online sync failed. Try Sync latest again.', 'info')
+      })
+  }
+
+  async function syncLatest(options = {}) {
+    if (syncBusy) return
+    setSyncBusy(true)
+    try {
+      const localSnapshot = persistState(projects, phaseCatalog, divisionCatalog)
+      const hasPending = localStorage.getItem(PENDING_SYNC_KEY) === 'true'
+      if (hasPending && adminSessionPassword && !options.forcePull) {
+        await pushSnapshotToServer(localSnapshot, adminSessionPassword, {
+          message: 'Local pending edits uploaded',
+        })
+      }
+
+      const remoteDataset = await loadRemoteDashboardDataset()
+      const remoteProjects = remoteDataset.projects.map(cleanProject)
+      const hydratedProjects = await hydrateProjectsWithLocalMedia(remoteProjects)
+      setBaseData(remoteDataset)
+      setProjects(hydratedProjects)
+      setPhaseCatalog(remoteDataset.phases)
+      setDivisionCatalog(remoteDataset.divisions)
+      setSelectedId(hydratedProjects[0]?.id || '')
+      persistState(hydratedProjects, remoteDataset.phases, remoteDataset.divisions, remoteDataset)
+
+      const syncedAt = new Date().toISOString()
+      localStorage.removeItem(PENDING_SYNC_KEY)
+      localStorage.setItem(LAST_SYNC_KEY, syncedAt)
+      setSyncState({
+        mode: 'live',
+        message: 'Latest shared data loaded',
+        lastSyncedAt: syncedAt,
+        pending: false,
+      })
+      if (!options.quiet) notify('Sync complete', 'This laptop now has the latest shared data.', 'success')
+    } catch (error) {
+      setSyncState((current) => ({
+        ...current,
+        mode: navigator.onLine ? 'local' : 'offline',
+        message: error.message || 'Sync failed',
+      }))
+      if (!options.quiet) notify('Sync failed', error.message || 'Shared server is not reachable.', 'error')
+    } finally {
+      setSyncBusy(false)
+    }
+  }
+
+  async function uploadProjectMedia(projectId, files, mediaType, startingOrder = 0, startingTypeCount = 0) {
+    if (!navigator.onLine) throw new Error('Media upload needs internet')
+    if (!adminSessionPassword) throw new Error('Unlock admin again before online media upload')
+
+    const body = new FormData()
+    body.append('projectId', projectId)
+    body.append('mediaType', mediaType)
+    body.append('startingOrder', String(startingOrder))
+    body.append('startingTypeCount', String(startingTypeCount))
+    for (const file of files) body.append('files', file)
+
+    const result = await fetchJsonFromApi(API_MEDIA_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'X-BSDI-Admin-Password': adminSessionPassword,
+      },
+      body,
+    })
+
+    return result.media || []
   }
 
   function saveProjects(next) {
@@ -2502,7 +2805,8 @@ export default function App() {
     setProjects(cleanedProjects)
     setPhaseCatalog(nextPhases)
     setDivisionCatalog(nextDivisions)
-    persistState(cleanedProjects, nextPhases, nextDivisions)
+    const snapshot = persistState(cleanedProjects, nextPhases, nextDivisions)
+    queueSnapshotSync(snapshot, 'Project data synced')
   }
 
   function resetProjects() {
@@ -2516,6 +2820,8 @@ export default function App() {
     for (const key of LEGACY_PROJECT_KEYS) localStorage.removeItem(key)
     setSelectedId(original[0]?.id || '')
     notify('Database reset', 'Local edits were cleared and source data was restored.', 'info')
+    const snapshot = persistState(original, nextPhases, nextDivisions)
+    queueSnapshotSync(snapshot, 'Reset synced')
   }
 
   function addPhase(name) {
@@ -2527,7 +2833,8 @@ export default function App() {
     }
     const nextPhases = cleanPhaseCatalog([...phaseCatalog, { id: toId(cleanName), name: cleanName, status: 'completed' }], projects)
     setPhaseCatalog(nextPhases)
-    persistState(projects, nextPhases, divisionCatalog)
+    const snapshot = persistState(projects, nextPhases, divisionCatalog)
+    queueSnapshotSync(snapshot, 'Phase synced')
     notify('Phase added', cleanName, 'success')
     return true
   }
@@ -2541,7 +2848,8 @@ export default function App() {
     }
     const nextDivisions = cleanDivisionCatalog([...divisionCatalog, { id: toId(cleanName), name: cleanName, districts: [] }], projects)
     setDivisionCatalog(nextDivisions)
-    persistState(projects, phaseCatalog, nextDivisions)
+    const snapshot = persistState(projects, phaseCatalog, nextDivisions)
+    queueSnapshotSync(snapshot, 'Division synced')
     notify('Division added', cleanName, 'success')
     return true
   }
@@ -2565,7 +2873,8 @@ export default function App() {
       projects,
     )
     setDivisionCatalog(nextDivisions)
-    persistState(projects, phaseCatalog, nextDivisions)
+    const snapshot = persistState(projects, phaseCatalog, nextDivisions)
+    queueSnapshotSync(snapshot, 'District synced')
     notify('District added', `${cleanDistrict} added to ${divisionName}.`, 'success')
     return true
   }
@@ -2577,6 +2886,14 @@ export default function App() {
     adminAuthed ? { id: 'admin', label: 'Data Editor', icon: ShieldCheck } : null,
   ].filter(Boolean)
   const visibleActiveTab = activeTab === 'admin' && !adminAuthed ? 'insights' : activeTab
+  const SyncIcon = syncState.mode === 'offline' ? CloudOff : Cloud
+  const syncLabel = syncState.pending
+    ? 'Pending sync'
+    : syncState.mode === 'live'
+      ? 'Synced'
+      : syncState.mode === 'checking'
+        ? 'Checking sync'
+        : 'Local cache'
 
   if (loadError) {
     return (
@@ -2653,6 +2970,29 @@ export default function App() {
                   <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-white/30'}`} />
                   {online ? 'Online' : 'Offline'}
                 </span>
+                <span
+                  className={`inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                    syncState.pending
+                      ? 'border-amber-300/30 bg-amber-300/10 text-amber-200'
+                      : syncState.mode === 'live'
+                        ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                        : 'border-white/10 bg-white/8 text-white/60'
+                  }`}
+                  title={syncState.message}
+                >
+                  <SyncIcon size={12} />
+                  <span className="truncate">{syncLabel}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => syncLatest()}
+                  disabled={!online || syncBusy}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 text-xs font-semibold text-white/80 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
+                  title="Upload pending edits, then load the latest shared database"
+                >
+                  <RefreshCw size={12} className={syncBusy ? 'animate-spin' : ''} />
+                  Sync
+                </button>
               </div>
               <div className="mt-3 flex min-w-0 items-center gap-3">
                 <img
@@ -2764,9 +3104,11 @@ export default function App() {
             onAddPhase={addPhase}
             onAddDivision={addDivision}
             onAddDistrict={addDistrict}
+            uploadProjectMedia={uploadProjectMedia}
             notify={notify}
             onLock={() => {
               setAdminAuthed(false)
+              setAdminSessionPassword('')
               setActiveTab('insights')
               notify('Editor locked', 'Admin editing is disabled.', 'info')
             }}
@@ -2780,7 +3122,8 @@ export default function App() {
         authed={adminAuthed}
         setAuthed={setAdminAuthed}
         onClose={() => setAdminOpen(false)}
-        onUnlock={() => {
+        onUnlock={(password) => {
+          setAdminSessionPassword(password)
           setAdminOpen(false)
           setActiveTab('admin')
         }}
