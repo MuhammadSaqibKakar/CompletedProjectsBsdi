@@ -58,11 +58,7 @@ If the header shows `View-only` or the Sync button only says `Check`, the site i
 
 Open the hidden admin panel with `Ctrl + Shift + E`.
 
-Password:
-
-```text
-bsdi@4332
-```
+The admin password is stored in the database settings at `public/database/bsdi-db.json` under `settings.adminPassword`.
 
 Admin changes save locally first, then sync to the shared server when online. If the app is offline or the server is unavailable, changes stay on that laptop and the Sync button can upload them later. Images and videos can be uploaded directly in the editor. Online deployments store uploads in the server data directory; offline-only uploads stay in the browser/desktop app media database. Drive fields remain view-only links for normal users.
 

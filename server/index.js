@@ -81,7 +81,6 @@ async function readDashboardState() {
 
 function getPasswordFromState(state) {
   return (
-    process.env.BSDI_ADMIN_PASSWORD ||
     state?.settings?.adminPassword ||
     state?.settings?.admin?.password ||
     ''
