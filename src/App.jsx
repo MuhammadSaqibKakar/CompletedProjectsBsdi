@@ -840,6 +840,258 @@ function MediaViewer({ project }) {
   )
 }
 
+function ShowcaseLightbox({ entry, onClose }) {
+  useEffect(() => {
+    if (!entry) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') onClose?.()
+    }
+
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [entry, onClose])
+
+  if (!entry) return null
+
+  const { project, media } = entry
+  const isVideo = media.type === 'video'
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/95 p-3 sm:p-5"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
+          title="Close"
+        >
+          <X size={22} />
+        </button>
+        <motion.div
+          className="w-full max-w-6xl overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl"
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.98 }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="border-b border-white/10 bg-slate-950/80 px-4 py-3 text-white sm:px-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-300">{project.district}</p>
+            <h3 className="mt-1 line-clamp-2 text-base font-bold sm:text-lg">{project.title}</h3>
+          </div>
+          <div className="grid max-h-[78vh] place-items-center bg-slate-950">
+            {isVideo ? (
+              <video
+                src={media.src}
+                controls
+                autoPlay
+                className="max-h-[78vh] w-full bg-slate-950 object-contain"
+              />
+            ) : (
+              <img
+                src={media.src}
+                alt={media.name || project.title}
+                className="max-h-[78vh] w-full object-contain"
+              />
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+function VisualsPanel({ projects, phaseSelection, onOpenProject }) {
+  const [tick, setTick] = useState(0)
+  const [lightboxEntry, setLightboxEntry] = useState(null)
+  const showcaseProjects = useMemo(
+    () =>
+      projects
+        .filter((project) => Array.isArray(project.media) && project.media.length)
+        .map((project) => ({
+          ...project,
+          media: [...project.media].sort((a, b) => (a.order || 0) - (b.order || 0)),
+        })),
+    [projects],
+  )
+  const imageCount = useMemo(
+    () =>
+      showcaseProjects.reduce(
+        (sum, project) => sum + project.media.filter((item) => item.type !== 'video').length,
+        0,
+      ),
+    [showcaseProjects],
+  )
+  const videoCount = useMemo(
+    () =>
+      showcaseProjects.reduce(
+        (sum, project) => sum + project.media.filter((item) => item.type === 'video').length,
+        0,
+      ),
+    [showcaseProjects],
+  )
+
+  useEffect(() => {
+    if (!showcaseProjects.length) return undefined
+    const timer = window.setInterval(() => {
+      setTick((current) => current + 1)
+    }, 3800)
+    return () => window.clearInterval(timer)
+  }, [showcaseProjects.length])
+
+  return (
+    <div className="space-y-4">
+      <section className="card overflow-hidden p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">
+              {phaseSelection}
+            </span>
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+              Visual Showcase
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              Project media gallery with auto-scrolling image and video cards.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+              <p className="form-label">Projects</p>
+              <p className="mt-1 text-2xl font-black text-slate-950">{showcaseProjects.length}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-100 bg-white p-3">
+              <p className="form-label">Images</p>
+              <p className="mt-1 text-2xl font-black text-slate-950">{imageCount}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-100 bg-white p-3">
+              <p className="form-label">Videos</p>
+              <p className="mt-1 text-2xl font-black text-slate-950">{videoCount}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {showcaseProjects.length ? (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {showcaseProjects.map((project, index) => {
+            const activeIndex = project.media.length
+              ? (tick + index) % project.media.length
+              : 0
+            const activeMedia = project.media[activeIndex]
+            const isVideo = activeMedia?.type === 'video'
+            return (
+              <motion.article
+                key={project.id}
+                layout
+                className="group overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-card transition duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-2xl hover:shadow-emerald-950/10"
+              >
+                <div className="flex min-h-[92px] items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-br from-white via-emerald-50/70 to-white p-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white">
+                        {project.district}
+                      </span>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                        {project.phase || 'Phase 1'}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 line-clamp-2 text-base font-extrabold leading-snug text-slate-950">
+                      {project.title}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject?.(project.id)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-emerald-100 bg-white text-emerald-700 shadow-sm transition hover:bg-emerald-50"
+                    title="Open project details"
+                  >
+                    <ExternalLink size={15} />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setLightboxEntry({ project, media: activeMedia })}
+                  className="relative block aspect-[16/10] w-full overflow-hidden bg-slate-950 text-left"
+                  title="Open media"
+                >
+                  {isVideo ? (
+                    <video
+                      src={activeMedia.src}
+                      muted
+                      loop
+                      autoPlay
+                      playsInline
+                      preload="metadata"
+                      className="h-full w-full object-cover opacity-95 transition duration-500 group-hover:scale-[1.03]"
+                    />
+                  ) : (
+                    <img
+                      src={activeMedia.src}
+                      alt={activeMedia.name || project.title}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                      loading="lazy"
+                    />
+                  )}
+                  <span className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-slate-950/80 to-transparent" />
+                  <span className="absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-xs font-bold text-white backdrop-blur">
+                    {isVideo ? <Video size={14} /> : <ImageIcon size={14} />}
+                    {activeIndex + 1} / {project.media.length}
+                  </span>
+                  <span className="absolute bottom-3 right-3 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-xs font-bold text-white backdrop-blur">
+                    Open
+                  </span>
+                </button>
+
+                <div className="flex items-center gap-1.5 overflow-hidden p-3">
+                  {project.media.slice(0, 8).map((item, mediaIndex) => (
+                    <button
+                      key={item.id || `${project.id}-${mediaIndex}`}
+                      type="button"
+                      onClick={() => setLightboxEntry({ project, media: item })}
+                      className={`h-1.5 flex-1 rounded-full transition ${
+                        mediaIndex === activeIndex ? 'bg-emerald-600' : 'bg-slate-200 hover:bg-emerald-200'
+                      }`}
+                      title={item.name || `Media ${mediaIndex + 1}`}
+                    />
+                  ))}
+                  {project.media.length > 8 ? (
+                    <span className="ml-1 text-[10px] font-bold text-slate-400">+{project.media.length - 8}</span>
+                  ) : null}
+                </div>
+              </motion.article>
+            )
+          })}
+        </section>
+      ) : (
+        <section className="card grid min-h-[260px] place-items-center p-8 text-center">
+          <div>
+            <span className="icon-box mx-auto mb-3 h-12 w-12 rounded-xl">
+              <ImageIcon size={22} />
+            </span>
+            <h3 className="text-lg font-bold text-slate-900">No media available</h3>
+            <p className="mt-2 text-sm text-slate-500">Add images or videos to projects to populate this showcase.</p>
+          </div>
+        </section>
+      )}
+
+      <ShowcaseLightbox entry={lightboxEntry} onClose={() => setLightboxEntry(null)} />
+    </div>
+  )
+}
+
 function DriveFolderCard({ project }) {
   const link = project.driveLink || ''
   const isReady = Boolean(link)
@@ -2856,11 +3108,16 @@ export default function App() {
         }
         if (event.key === '2') {
           event.preventDefault()
+          setActiveTab('visuals')
+          return
+        }
+        if (event.key === '3') {
+          event.preventDefault()
           setDetailsFocusProjectId('')
           setActiveTab('details')
           return
         }
-        if (event.key === '3') {
+        if (event.key === '4') {
           event.preventDefault()
           openAdminEditor()
           return
@@ -3287,6 +3544,7 @@ export default function App() {
   const headerCompleted = phaseProjects.length
   const tabs = [
     { id: 'insights', label: 'Insights', icon: BarChart3 },
+    { id: 'visuals', label: 'Visuals', icon: ImageIcon },
     { id: 'details', label: 'Project Details', icon: TableProperties },
     adminAuthed ? { id: 'admin', label: 'Data Editor', icon: ShieldCheck } : null,
   ].filter(Boolean)
@@ -3480,6 +3738,14 @@ export default function App() {
             projects={phaseProjects}
             stats={stats}
             phaseSelection={phaseSelection}
+          />
+        ) : null}
+
+        {visibleActiveTab === 'visuals' ? (
+          <VisualsPanel
+            projects={phaseProjects}
+            phaseSelection={phaseSelection}
+            onOpenProject={openProjectDetails}
           />
         ) : null}
 
