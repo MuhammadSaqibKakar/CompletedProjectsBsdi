@@ -54,6 +54,12 @@ const LANDMARK_CARDS = [
 ]
 const phaseOptions = ['Total', 'Phase 1', 'Phase 2', 'Phase 3']
 const projectPhaseOptions = phaseOptions.filter((phase) => phase !== 'Total')
+const pakistanDateFormatter = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'Asia/Karachi',
+})
 
 const fieldList = [
   ['title', 'Project title', 'text'],
@@ -97,6 +103,10 @@ function createBlankProject(divisions) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b))
+}
+
+function getPakistanDisplayDate() {
+  return pakistanDateFormatter.format(new Date())
 }
 
 function toId(value) {
@@ -2546,6 +2556,7 @@ export default function App() {
   })
   const [syncAvailable, setSyncAvailable] = useState(false)
   const [syncBusy, setSyncBusy] = useState(false)
+  const [pakistanDisplayDate, setPakistanDisplayDate] = useState(() => getPakistanDisplayDate())
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -2558,6 +2569,13 @@ export default function App() {
 
   const dismissNotification = useCallback((id) => {
     setNotifications((current) => current.filter((item) => item.id !== id))
+  }, [])
+
+  useEffect(() => {
+    const refreshPakistanDate = () => setPakistanDisplayDate(getPakistanDisplayDate())
+    refreshPakistanDate()
+    const timer = window.setInterval(refreshPakistanDate, 30 * 1000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const openAdminEditor = useCallback((projectId) => {
@@ -3085,7 +3103,7 @@ export default function App() {
                   />
                 </label>
                 <span className="inline-flex items-center rounded-full border border-white/10 bg-white/8 px-2.5 py-0.5 text-xs font-medium text-white/70">
-                  {baseData.meta.sourceDate}
+                  {pakistanDisplayDate}
                 </span>
                 <span
                   className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
