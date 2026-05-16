@@ -138,11 +138,6 @@ function cleanPhaseCatalog(phases = [], projects = []) {
       byName.set(name, { id: toId(name), name, status: 'completed', projectCount: 0, projectIds: [] })
     }
   }
-  for (const phase of projectPhaseOptions) {
-    if (!byName.has(phase)) {
-      byName.set(phase, { id: toId(phase), name: phase, status: 'completed', projectCount: 0, projectIds: [] })
-    }
-  }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
 }
 
@@ -1880,7 +1875,11 @@ function AdminPanel({
   onAddPhase,
   onAddDivision,
   onAddDistrict,
+  onDeletePhase,
+  onDeleteDivision,
+  onDeleteDistrict,
   uploadProjectMedia,
+  adminPassword = FALLBACK_ADMIN_PASSWORD,
   notify,
 }) {
   function districtOptionsFor(divisionName) {
@@ -1912,6 +1911,9 @@ function AdminPanel({
     selectedProject || blankProjectFor(initialDivision, initialDistrict),
   )
   const [error, setError] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteError, setDeleteError] = useState('')
   const divisionOptions = useMemo(
     () => unique([...divisions, ...projects.map((project) => project.division)]),
     [divisions, projects],
@@ -1934,6 +1936,47 @@ function AdminPanel({
     [districtProjects, selectedPhase],
   )
 
+  function pluralize(count, label) {
+    return `${count} ${label}${count === 1 ? '' : 's'}`
+  }
+
+  function deleteDetail(kind, affectedProjects) {
+    if (kind === 'Project') return 'This project record will be deleted.'
+    if (affectedProjects) {
+      return `${pluralize(affectedProjects, 'project')} under this ${kind.toLowerCase()} will also be deleted.`
+    }
+    return `Only the ${kind.toLowerCase()} catalog entry will be deleted.`
+  }
+
+  function requestDelete(kind, name, affectedProjects, onConfirm) {
+    if (!adminPassword) {
+      notify?.('Delete blocked', 'Admin password is missing from the active database.', 'error')
+      return false
+    }
+    setDeleteConfirm({ kind, name, affectedProjects, onConfirm })
+    setDeletePassword('')
+    setDeleteError('')
+    return true
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteConfirm(null)
+    setDeletePassword('')
+    setDeleteError('')
+  }
+
+  function submitDeleteConfirm(event) {
+    event.preventDefault()
+    if (!deleteConfirm) return
+    if (deletePassword !== adminPassword) {
+      setDeleteError('Password is incorrect')
+      notify?.('Delete blocked', 'Password is incorrect. Nothing was deleted.', 'error')
+      return
+    }
+    deleteConfirm.onConfirm?.()
+    closeDeleteConfirm()
+  }
+
   function updateField(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
     if (name === 'phase') setSelectedPhase(value)
@@ -1943,6 +1986,23 @@ function AdminPanel({
     const name = window.prompt('New phase name', `Phase ${editorPhaseOptions.length + 1}`)?.trim()
     if (!name) return
     if (onAddPhase?.(name)) changePhase(name)
+  }
+
+  function deleteSelectedPhase() {
+    if (!selectedPhase) return
+    if (editorPhaseOptions.length <= 1) {
+      notify?.('Delete blocked', 'Create another phase before deleting the last one.', 'error')
+      return
+    }
+    const affectedProjects = projects.filter((project) => (project.phase || 'Phase 1') === selectedPhase).length
+    requestDelete('Phase', selectedPhase, affectedProjects, () => {
+      const nextPhase = editorPhaseOptions.find((phase) => phase !== selectedPhase) || ''
+      onDeletePhase?.(selectedPhase)
+      setSelectedPhase(nextPhase)
+      setForm({ ...blankProjectFor(selectedDivision, selectedDistrict), phase: nextPhase || 'Phase 1' })
+      setSelectedId('')
+      setError('')
+    })
   }
 
   function addDivisionFromEditor() {
@@ -1955,6 +2015,25 @@ function AdminPanel({
       setSelectedId('')
       setError('')
     }
+  }
+
+  function deleteSelectedDivision() {
+    if (!selectedDivision) return
+    if (divisionOptions.length <= 1) {
+      notify?.('Delete blocked', 'Create another division before deleting the last one.', 'error')
+      return
+    }
+    const affectedProjects = projects.filter((project) => project.division === selectedDivision).length
+    requestDelete('Division', selectedDivision, affectedProjects, () => {
+      const nextDivision = divisionOptions.find((division) => division !== selectedDivision) || ''
+      const nextDistrict = districtOptionsFor(nextDivision)[0] || ''
+      onDeleteDivision?.(selectedDivision)
+      setSelectedDivision(nextDivision)
+      setSelectedDistrict(nextDistrict)
+      setForm({ ...blankProjectFor(nextDivision, nextDistrict), phase: selectedPhase })
+      setSelectedId('')
+      setError('')
+    })
   }
 
   function addDistrictFromEditor() {
@@ -1971,6 +2050,21 @@ function AdminPanel({
       setSelectedId('')
       setError('')
     }
+  }
+
+  function deleteSelectedDistrict() {
+    if (!selectedDivision || !selectedDistrict) return
+    const affectedProjects = projects.filter(
+      (project) => project.division === selectedDivision && project.district === selectedDistrict,
+    ).length
+    requestDelete('District', selectedDistrict, affectedProjects, () => {
+      const nextDistrict = districtOptions.find((district) => district !== selectedDistrict) || ''
+      onDeleteDistrict?.(selectedDivision, selectedDistrict)
+      setSelectedDistrict(nextDistrict)
+      setForm({ ...blankProjectFor(selectedDivision, nextDistrict), phase: selectedPhase })
+      setSelectedId('')
+      setError('')
+    })
   }
 
   function selectProjectFor(divisionName, districtName) {
@@ -2144,18 +2238,20 @@ function AdminPanel({
 
   function deleteCurrent() {
     if (!form.id) return
-    const next = projects.filter((project) => project.id !== form.id)
-    const nextDistrictProjects = next.filter(
-      (project) =>
-        project.division === selectedDivision &&
-        project.district === selectedDistrict &&
-        (project.phase || 'Phase 1') === selectedPhase,
-    )
-    const replacement = nextDistrictProjects[0]
-    saveProjects(next)
-    setSelectedId(replacement?.id || '')
-    setForm(replacement || { ...blankProjectFor(selectedDivision, selectedDistrict), phase: selectedPhase })
-    notify?.('Project deleted', form.title || 'Project removed.', 'success')
+    requestDelete('Project', form.title || 'Untitled project', 0, () => {
+      const next = projects.filter((project) => project.id !== form.id)
+      const nextDistrictProjects = next.filter(
+        (project) =>
+          project.division === selectedDivision &&
+          project.district === selectedDistrict &&
+          (project.phase || 'Phase 1') === selectedPhase,
+      )
+      const replacement = nextDistrictProjects[0]
+      saveProjects(next)
+      setSelectedId(replacement?.id || '')
+      setForm(replacement || { ...blankProjectFor(selectedDivision, selectedDistrict), phase: selectedPhase })
+      notify?.('Project deleted', form.title || 'Project removed.', 'success')
+    })
   }
 
   return (
@@ -2168,14 +2264,25 @@ function AdminPanel({
           <label className="min-w-[130px] flex-1 sm:flex-none">
             <span className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
               Phase
-              <button
-                type="button"
-                onClick={addPhaseFromEditor}
-                className="rounded-full px-1.5 py-0.5 text-[10px] text-emerald-700 transition hover:bg-emerald-50"
-                title="Add phase"
-              >
-                + Add
-              </button>
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={addPhaseFromEditor}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] text-emerald-700 transition hover:bg-emerald-50"
+                  title="Add phase"
+                >
+                  + Add
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteSelectedPhase}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Delete selected phase"
+                  disabled={!selectedPhase}
+                >
+                  Delete
+                </button>
+              </span>
             </span>
             <select
               value={selectedPhase}
@@ -2192,14 +2299,25 @@ function AdminPanel({
           <label className="min-w-[180px] flex-1 sm:flex-none">
             <span className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
               Division
-              <button
-                type="button"
-                onClick={addDivisionFromEditor}
-                className="rounded-full px-1.5 py-0.5 text-[10px] text-emerald-700 transition hover:bg-emerald-50"
-                title="Add division"
-              >
-                + Add
-              </button>
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={addDivisionFromEditor}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] text-emerald-700 transition hover:bg-emerald-50"
+                  title="Add division"
+                >
+                  + Add
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteSelectedDivision}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Delete selected division"
+                  disabled={!selectedDivision}
+                >
+                  Delete
+                </button>
+              </span>
             </span>
             <select
               value={selectedDivision}
@@ -2216,14 +2334,25 @@ function AdminPanel({
           <label className="min-w-[150px] flex-1 sm:flex-none">
             <span className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
               District
-              <button
-                type="button"
-                onClick={addDistrictFromEditor}
-                className="rounded-full px-1.5 py-0.5 text-[10px] text-emerald-700 transition hover:bg-emerald-50"
-                title="Add district"
-              >
-                + Add
-              </button>
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={addDistrictFromEditor}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] text-emerald-700 transition hover:bg-emerald-50"
+                  title="Add district"
+                >
+                  + Add
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteSelectedDistrict}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Delete selected district"
+                  disabled={!selectedDivision || !selectedDistrict}
+                >
+                  Delete
+                </button>
+              </span>
             </span>
             <select
               value={selectedDistrict}
@@ -2446,6 +2575,70 @@ function AdminPanel({
           </div>
         </main>
       </div>
+
+      <AnimatePresence>
+        {deleteConfirm ? (
+          <motion.div
+            className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.form
+              onSubmit={submitDeleteConfirm}
+              className="w-full max-w-md rounded-2xl border border-red-100 bg-white p-5 shadow-2xl shadow-slate-950/20"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            >
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600">
+                  <Trash2 size={20} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-base font-bold text-slate-950">
+                    Delete {deleteConfirm.kind}
+                  </p>
+                  <p className="mt-1 break-words text-sm font-semibold text-slate-700">
+                    {deleteConfirm.name}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-red-100 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                <p className="font-bold">Warning</p>
+                <p>{deleteDetail(deleteConfirm.kind, deleteConfirm.affectedProjects)}</p>
+                <p>This cannot be undone from the editor.</p>
+              </div>
+
+              <label className="mt-4 block">
+                <span className="form-label">Confirm admin password</span>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(event) => {
+                    setDeletePassword(event.target.value)
+                    setDeleteError('')
+                  }}
+                  autoFocus
+                  className="form-input"
+                />
+              </label>
+              {deleteError ? <p className="mt-2 text-sm font-medium text-red-600">{deleteError}</p> : null}
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button type="button" onClick={closeDeleteConfirm} className="btn-secondary justify-center">
+                  Cancel
+                </button>
+                <button type="submit" className="btn-danger justify-center">
+                  <LockKeyhole size={15} />
+                  Confirm delete
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
   )
 }
@@ -2980,6 +3173,27 @@ export default function App() {
     return true
   }
 
+  function deletePhase(name) {
+    const cleanName = name.trim()
+    if (!cleanName) return false
+    const nextProjects = projects.filter((project) => (project.phase || 'Phase 1') !== cleanName)
+    const removedCount = projects.length - nextProjects.length
+    const nextPhases = cleanPhaseCatalog(
+      phaseCatalog.filter((phase) => phase.name !== cleanName),
+      nextProjects,
+    )
+    const nextDivisions = cleanDivisionCatalog(divisionCatalog, nextProjects)
+    setProjects(nextProjects)
+    setPhaseCatalog(nextPhases)
+    setDivisionCatalog(nextDivisions)
+    if (phaseSelection === cleanName) setPhaseSelection('Total')
+    setSelectedId(nextProjects[0]?.id || '')
+    const snapshot = persistState(nextProjects, nextPhases, nextDivisions)
+    queueSnapshotSync(snapshot, 'Phase deletion synced')
+    notify('Phase deleted', `${cleanName} removed with ${removedCount} project${removedCount === 1 ? '' : 's'}.`, 'success')
+    return true
+  }
+
   function addDivision(name) {
     const cleanName = name.trim()
     if (!cleanName) return false
@@ -2992,6 +3206,26 @@ export default function App() {
     const snapshot = persistState(projects, phaseCatalog, nextDivisions)
     queueSnapshotSync(snapshot, 'Division synced')
     notify('Division added', cleanName, 'success')
+    return true
+  }
+
+  function deleteDivision(name) {
+    const cleanName = name.trim()
+    if (!cleanName) return false
+    const nextProjects = projects.filter((project) => project.division !== cleanName)
+    const removedCount = projects.length - nextProjects.length
+    const nextDivisions = cleanDivisionCatalog(
+      divisionCatalog.filter((division) => division.name !== cleanName),
+      nextProjects,
+    )
+    const nextPhases = cleanPhaseCatalog(phaseCatalog, nextProjects)
+    setProjects(nextProjects)
+    setPhaseCatalog(nextPhases)
+    setDivisionCatalog(nextDivisions)
+    setSelectedId(nextProjects[0]?.id || '')
+    const snapshot = persistState(nextProjects, nextPhases, nextDivisions)
+    queueSnapshotSync(snapshot, 'Division deletion synced')
+    notify('Division deleted', `${cleanName} removed with ${removedCount} project${removedCount === 1 ? '' : 's'}.`, 'success')
     return true
   }
 
@@ -3017,6 +3251,36 @@ export default function App() {
     const snapshot = persistState(projects, phaseCatalog, nextDivisions)
     queueSnapshotSync(snapshot, 'District synced')
     notify('District added', `${cleanDistrict} added to ${divisionName}.`, 'success')
+    return true
+  }
+
+  function deleteDistrict(divisionName, districtName) {
+    const cleanDistrict = districtName.trim()
+    if (!divisionName || !cleanDistrict) return false
+    const nextProjects = projects.filter(
+      (project) => !(project.division === divisionName && project.district === cleanDistrict),
+    )
+    const removedCount = projects.length - nextProjects.length
+    const nextDivisions = cleanDivisionCatalog(
+      divisionCatalog.map((division) =>
+        division.name === divisionName
+          ? { ...division, districts: (division.districts || []).filter((district) => district !== cleanDistrict) }
+          : division,
+      ),
+      nextProjects,
+    )
+    const nextPhases = cleanPhaseCatalog(phaseCatalog, nextProjects)
+    setProjects(nextProjects)
+    setPhaseCatalog(nextPhases)
+    setDivisionCatalog(nextDivisions)
+    setSelectedId(nextProjects[0]?.id || '')
+    const snapshot = persistState(nextProjects, nextPhases, nextDivisions)
+    queueSnapshotSync(snapshot, 'District deletion synced')
+    notify(
+      'District deleted',
+      `${cleanDistrict} removed from ${divisionName} with ${removedCount} project${removedCount === 1 ? '' : 's'}.`,
+      'success',
+    )
     return true
   }
 
@@ -3251,7 +3515,11 @@ export default function App() {
             onAddPhase={addPhase}
             onAddDivision={addDivision}
             onAddDistrict={addDistrict}
+            onDeletePhase={deletePhase}
+            onDeleteDivision={deleteDivision}
+            onDeleteDistrict={deleteDistrict}
             uploadProjectMedia={uploadProjectMedia}
+            adminPassword={baseData.settings?.adminPassword || FALLBACK_ADMIN_PASSWORD}
             notify={notify}
             onLock={() => {
               setAdminAuthed(false)
