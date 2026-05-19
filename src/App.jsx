@@ -22,6 +22,7 @@ import {
   MapPinned,
   Pencil,
   Plus,
+  Printer,
   RefreshCw,
   RotateCcw,
   Save,
@@ -33,7 +34,7 @@ import {
   Video,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const FALLBACK_ADMIN_PASSWORD = ''
 const STORAGE_KEY = 'bsdi-dashboard-state-v1'
@@ -1126,12 +1127,13 @@ function DriveFolderCard({ project }) {
 
 function ProjectDetail({ project, onEditProject }) {
   if (!project) return null
+  const printImages = (project.media || []).filter((item) => item.type !== 'video').slice(0, 4)
   return (
     <motion.section
       key={project.id}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card min-w-0 p-4 sm:p-5"
+      className="card print-project-detail min-w-0 p-4 sm:p-5"
     >
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.12fr)_minmax(300px,0.88fr)] xl:gap-6">
         <div className="min-w-0">
@@ -1150,7 +1152,7 @@ function ProjectDetail({ project, onEditProject }) {
               <button
                 type="button"
                 onClick={() => onEditProject(project.id)}
-                className="btn-secondary h-9 w-full text-xs sm:w-auto"
+                className="btn-secondary no-print h-9 w-full text-xs sm:w-auto"
               >
                 <Pencil size={14} />
                 Edit project
@@ -1164,6 +1166,7 @@ function ProjectDetail({ project, onEditProject }) {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{project.description}</p>
           ) : null}
           <div className="mt-4 grid gap-2.5 md:grid-cols-2">
+            <DetailLine icon={FileJson} label="Serial" value={project.slide ? `#${project.slide}` : project.id} />
             <DetailLine icon={MapPin} label="District" value={project.district} />
             <DetailLine icon={Tags} label="Category" value={project.category} />
             <DetailLine icon={CircleDollarSign} label="Cost" value={project.cost} />
@@ -1177,11 +1180,244 @@ function ProjectDetail({ project, onEditProject }) {
               <p className="mt-2 text-sm leading-6 text-slate-700">{project.scope}</p>
             </div>
           ) : null}
-          <DriveFolderCard project={project} />
+          <div className="no-print">
+            <DriveFolderCard project={project} />
+          </div>
         </div>
-        <MediaViewer project={project} />
+        <div className="no-print">
+          <MediaViewer project={project} />
+        </div>
       </div>
+      {printImages.length ? (
+        <div className="print-project-gallery">
+          <p className="print-gallery-title">Project Images</p>
+          <div className="print-gallery-grid">
+            {printImages.map((item, index) => (
+              <figure key={item.id || `${project.id}-print-${index}`} className="print-gallery-item">
+                <img src={item.src} alt={item.name || project.title} loading="eager" decoding="sync" />
+                <figcaption>{item.name || `Image ${index + 1}`}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </motion.section>
+  )
+}
+
+function PrintReportProjectPage({ project, index, divisionName, districtName }) {
+  const images = (project.media || []).filter((item) => item.type !== 'video').slice(0, 6)
+  const videoCount = (project.media || []).filter((item) => item.type === 'video').length
+  const serial = project.slide ? `#${project.slide}` : String(index + 1).padStart(3, '0')
+
+  return (
+    <article className="print-project-page">
+      <div className="print-project-page-head">
+        <div>
+          <p className="print-kicker">Project Page</p>
+          <h2>{project.title}</h2>
+        </div>
+        <div className="print-project-serial">
+          <span>Serial</span>
+          <strong>{serial}</strong>
+        </div>
+      </div>
+      <div className="print-project-meta">
+        <span>Division <strong>{divisionName || project.division}</strong></span>
+        <span>District <strong>{districtName || project.district}</strong></span>
+        <span>Phase <strong>{project.phase || 'Phase 1'}</strong></span>
+        <span>Cost <strong>{project.cost || 'Not added'}</strong></span>
+        <span>Category <strong>{project.category || 'Unassigned'}</strong></span>
+        <span>Progress <strong>{project.progress || 'Completed'}</strong></span>
+      </div>
+      {project.scope || project.description ? (
+        <div className="print-project-scope">
+          <p>{project.description || project.scope}</p>
+        </div>
+      ) : null}
+      {images.length ? (
+        <>
+        <p className="print-gallery-title">Project Images</p>
+        <div className="print-project-images">
+          {images.map((image, imageIndex) => (
+            <img
+              key={image.id || `${project.id}-print-image-${imageIndex}`}
+              src={image.src}
+              alt={image.name || project.title}
+              loading="eager"
+              decoding="sync"
+            />
+          ))}
+        </div>
+        </>
+      ) : (
+        <div className="print-project-placeholder">
+          <ImageIcon size={18} />
+          <span>No image added</span>
+        </div>
+      )}
+      <div className="print-project-footer">
+        <span>{(project.media || []).length} media file{(project.media || []).length === 1 ? '' : 's'}</span>
+        {videoCount ? <span>{videoCount} video{videoCount === 1 ? '' : 's'} available in app</span> : null}
+      </div>
+    </article>
+  )
+}
+
+function FullPrintReport({ projects, stats, phaseSelection, date }) {
+  const reportDivisions = useMemo(
+    () =>
+      unique(projects.map((project) => project.division)).map((divisionName) => {
+        const divisionProjects = projects.filter((project) => project.division === divisionName)
+        const districts = unique(divisionProjects.map((project) => project.district)).map((districtName) => {
+          const districtProjects = divisionProjects
+            .filter((project) => project.district === districtName)
+            .sort((a, b) => (Number(a.slide) || 9999) - (Number(b.slide) || 9999))
+          return {
+            name: districtName,
+            projects: districtProjects,
+            media: districtProjects.reduce((sum, project) => sum + (project.media || []).length, 0),
+            costMn: districtProjects.reduce((sum, project) => sum + parseCostToMillions(project.cost), 0),
+            categories: countBy(districtProjects, 'category').slice(0, 4),
+          }
+        })
+        return {
+          name: divisionName,
+          projects: divisionProjects,
+          districts,
+          media: divisionProjects.reduce((sum, project) => sum + (project.media || []).length, 0),
+          costMn: divisionProjects.reduce((sum, project) => sum + parseCostToMillions(project.cost), 0),
+          categories: countBy(divisionProjects, 'category').slice(0, 6),
+        }
+      }),
+    [projects],
+  )
+
+  return (
+    <section className="print-only print-full-report">
+      <section className="print-cover-page">
+        <div className="print-cover-top">
+          <img src={BRAND_LOGO} alt="BSDI logo" />
+          <div>
+            <p>Balochistan Special Development Initiative</p>
+            <h1>Completed Projects BSDI</h1>
+          </div>
+        </div>
+        <div className="print-cover-badges">
+          <span>{phaseSelection}</span>
+          <span>{date}</span>
+          <span>{reportDivisions.length} divisions</span>
+        </div>
+        <div className="print-cover-stats">
+          <div>
+            <p>Completed Projects</p>
+            <strong>{stats.completed}</strong>
+          </div>
+          <div>
+            <p>Districts</p>
+            <strong>{stats.districts}</strong>
+          </div>
+          <div>
+            <p>Total Media</p>
+            <strong>{stats.media}</strong>
+          </div>
+          <div>
+            <p>Budget</p>
+            <strong>{stats.budget}</strong>
+          </div>
+        </div>
+        <div className="print-cover-grid">
+          {reportDivisions.map((division) => (
+            <div key={division.name} className="print-cover-division-card">
+              <p>{division.name}</p>
+              <strong>{division.projects.length}</strong>
+              <span>{division.districts.length} districts - {formatCostMillions(division.costMn)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {reportDivisions.map((division) => (
+        <section key={division.name} className="print-division-group">
+          <section className="print-division-page">
+            <p className="print-kicker">Division Main Page</p>
+            <h2>{division.name}</h2>
+            <div className="print-section-stats">
+              <div>
+                <p>Projects</p>
+                <strong>{division.projects.length}</strong>
+              </div>
+              <div>
+                <p>Districts</p>
+                <strong>{division.districts.length}</strong>
+              </div>
+              <div>
+                <p>Media</p>
+                <strong>{division.media}</strong>
+              </div>
+              <div>
+                <p>Cost</p>
+                <strong>{formatCostMillions(division.costMn)}</strong>
+              </div>
+            </div>
+            <div className="print-info-grid">
+              <div>
+                <h3>District Coverage</h3>
+                <div className="print-chip-list">
+                  {division.districts.map((district) => (
+                    <span key={district.name}>{district.name} ({district.projects.length})</span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3>Top Categories</h3>
+                <div className="print-chip-list">
+                  {division.categories.map((category) => (
+                    <span key={category.name}>{category.name} ({category.count})</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {division.districts.map((district) => (
+            <section key={`${division.name}-${district.name}`} className="print-district-group">
+              <section className="print-district-page">
+                <div className="print-district-head">
+                  <div>
+                    <p className="print-kicker">District Main Page</p>
+                    <h2>{district.name}</h2>
+                    <p>{division.name}</p>
+                  </div>
+                  <div className="print-district-stats">
+                    <span>{district.projects.length} projects</span>
+                    <span>{district.media} media</span>
+                    <span>{formatCostMillions(district.costMn)}</span>
+                  </div>
+                </div>
+                <div className="print-chip-list print-district-categories">
+                  {district.categories.map((category) => (
+                    <span key={category.name}>{category.name} ({category.count})</span>
+                  ))}
+                </div>
+                <p className="print-district-note">
+                  Project detail pages follow separately for clean printing and image visibility.
+                </p>
+              </section>
+              {district.projects.map((project, index) => (
+                <PrintReportProjectPage
+                  key={project.id}
+                  project={project}
+                  index={index}
+                  divisionName={division.name}
+                  districtName={district.name}
+                />
+              ))}
+            </section>
+          ))}
+        </section>
+      ))}
+    </section>
   )
 }
 
@@ -1198,7 +1434,7 @@ function MetricPill({ label, value }) {
 
 function DetailPhaseSelector({ options, value, onChange }) {
   return (
-    <div className="flex w-full flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-inner shadow-slate-900/5 sm:w-auto">
+    <div className="no-print flex w-full flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-inner shadow-slate-900/5 sm:w-auto">
       {options.map((phase) => {
         const isActive = phase === value
         return (
@@ -1683,7 +1919,7 @@ function ProjectDetailsFlow({
             <button
               type="button"
               onClick={goBack}
-              className="group inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-gradient-to-br from-white via-white to-emerald-50 px-4 text-sm font-bold text-slate-700 shadow-sm shadow-emerald-950/5 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-800 hover:shadow-lg hover:shadow-emerald-950/10 sm:w-auto"
+              className="group no-print inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-gradient-to-br from-white via-white to-emerald-50 px-4 text-sm font-bold text-slate-700 shadow-sm shadow-emerald-950/5 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-800 hover:shadow-lg hover:shadow-emerald-950/10 sm:w-auto"
             >
               <span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-50 text-emerald-700 transition group-hover:bg-emerald-600 group-hover:text-white">
                 <ArrowLeft size={16} />
@@ -1711,7 +1947,7 @@ function ProjectDetailsFlow({
             </div>
           ) : null}
           {selectedDistrict && districtProjects.length ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="no-print flex flex-wrap gap-2">
               <button type="button" onClick={() => stepProject(-1)} className="btn-secondary flex-1 sm:flex-none">
                 <ArrowLeft size={16} />
                 Previous
@@ -1749,7 +1985,7 @@ function ProjectDetailsFlow({
 
       {/* Division grid */}
       {!selectedDivision ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-4">
+        <div className="print-card-grid grid gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-4">
           {divisionCards.map((divisionItem) => (
             <button
               key={divisionItem.name}
@@ -1793,7 +2029,7 @@ function ProjectDetailsFlow({
 
       {/* District grid */}
       {selectedDivision && !selectedDistrict ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3">
+        <div className="print-card-grid grid gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3">
           {districtCards.map((districtItem) => (
             <button
               key={districtItem.name}
@@ -1852,7 +2088,7 @@ function ProjectDetailsFlow({
       {selectedDistrict && districtProjects.length ? (
         <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(280px,320px)_minmax(0,1fr)]">
           {/* Sidebar */}
-          <aside className="card h-fit max-h-[52vh] overflow-auto p-3 xl:max-h-[720px]">
+          <aside className="card no-print h-fit max-h-[52vh] overflow-auto p-3 xl:max-h-[720px]">
             <div className="mb-3 flex items-center justify-between gap-2 px-1">
               <div>
                 <h3 className="text-sm font-bold text-slate-800">Project Sequence</h3>
@@ -2979,6 +3215,7 @@ function InsightsPanel({ projects, stats, phaseSelection }) {
 }
 
 export default function App() {
+  const printReportRef = useRef(null)
   const [baseData, setBaseData] = useState(null)
   const [projects, setProjects] = useState([])
   const [phaseCatalog, setPhaseCatalog] = useState([])
@@ -3002,6 +3239,8 @@ export default function App() {
   const [syncAvailable, setSyncAvailable] = useState(false)
   const [syncBusy, setSyncBusy] = useState(false)
   const [pakistanDisplayDate, setPakistanDisplayDate] = useState(() => getPakistanDisplayDate())
+  const [printReportReady, setPrintReportReady] = useState(false)
+  const [printRequested, setPrintRequested] = useState(false)
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -3022,6 +3261,62 @@ export default function App() {
     const timer = window.setInterval(refreshPakistanDate, 30 * 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!printReportReady) return undefined
+
+    const cleanupPrintReport = () => {
+      setPrintRequested(false)
+      setPrintReportReady(false)
+    }
+
+    window.addEventListener('afterprint', cleanupPrintReport)
+    return () => window.removeEventListener('afterprint', cleanupPrintReport)
+  }, [printReportReady])
+
+  useEffect(() => {
+    if (!printRequested || !printReportReady) return undefined
+
+    let cancelled = false
+    const waitForFrame = () => new Promise((resolve) => window.requestAnimationFrame(resolve))
+    const waitForImage = async (image) => {
+      if (!image.complete) {
+        await new Promise((resolve) => {
+          const done = () => resolve()
+          image.addEventListener('load', done, { once: true })
+          image.addEventListener('error', done, { once: true })
+        })
+      }
+
+      if (image.decode) {
+        await image.decode().catch(() => undefined)
+      }
+    }
+
+    async function prepareAndPrint() {
+      await waitForFrame()
+      await waitForFrame()
+
+      const reportNode = printReportRef.current
+      if (!reportNode || cancelled) return
+
+      const images = Array.from(reportNode.querySelectorAll('img'))
+      const imageLoad = Promise.all(images.map(waitForImage))
+      const printFallback = new Promise((resolve) => window.setTimeout(resolve, 15000))
+
+      await Promise.race([imageLoad, printFallback])
+      if (document.fonts?.ready) await Promise.race([document.fonts.ready, printFallback])
+      if (cancelled) return
+
+      window.print()
+      setPrintRequested(false)
+    }
+
+    prepareAndPrint()
+    return () => {
+      cancelled = true
+    }
+  }, [printReportReady, printRequested])
 
   const openAdminEditor = useCallback((projectId) => {
     if (projectId) setSelectedId(projectId)
@@ -3562,6 +3857,11 @@ export default function App() {
     ? 'Upload pending edits, then load the latest shared database'
     : 'Sync with the shared database when the Node server is available'
 
+  function printAllProjects() {
+    setPrintReportReady(true)
+    setPrintRequested(true)
+  }
+
   if (loadError) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
@@ -3589,10 +3889,10 @@ export default function App() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
+      <div className="app-shell mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
 
         {/* Header */}
-        <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 shadow-header sm:p-5 lg:p-6">
+        <header className="no-print relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 shadow-header sm:p-5 lg:p-6">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -3704,33 +4004,44 @@ export default function App() {
         </header>
 
         {/* Navigation */}
-        <nav
-          className="flex flex-wrap items-center gap-1 rounded-xl bg-white p-1.5 shadow-card"
-          aria-label="Main sections"
-        >
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            const isActive = visibleActiveTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  if (tab.id === 'details') setDetailsFocusProjectId('')
-                  setActiveTab(tab.id)
-                }}
-                className={`inline-flex h-9 min-w-[120px] flex-[1_1_130px] items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-3.5 ${
-                  isActive
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-                }`}
-              >
-                <Icon size={15} />
-                {tab.label}
-              </button>
-            )
-          })}
-        </nav>
+        <div className="no-print flex flex-col gap-2 rounded-xl bg-white p-1.5 shadow-card lg:flex-row lg:items-center lg:justify-between">
+          <nav
+            className="flex flex-1 flex-wrap items-center gap-1"
+            aria-label="Main sections"
+          >
+            {tabs.map((tab) => {
+              const Icon = tab.icon
+              const isActive = visibleActiveTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    if (tab.id === 'details') setDetailsFocusProjectId('')
+                    setActiveTab(tab.id)
+                  }}
+                  className={`inline-flex h-9 min-w-[120px] flex-[1_1_130px] items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-3.5 ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                  }`}
+                >
+                  <Icon size={15} />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </nav>
+          <button
+            type="button"
+            onClick={printAllProjects}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700"
+            title="Print full completed-project report"
+          >
+            <Printer size={15} />
+            Print All
+          </button>
+        </div>
 
         {/* Tab content */}
         {visibleActiveTab === 'insights' ? (
@@ -3796,6 +4107,17 @@ export default function App() {
           />
         ) : null}
       </div>
+
+      {printReportReady ? (
+        <div ref={printReportRef} className="print-report-host" aria-hidden="true">
+          <FullPrintReport
+            projects={phaseProjects}
+            stats={stats}
+            phaseSelection={phaseSelection}
+            date={pakistanDisplayDate}
+          />
+        </div>
+      ) : null}
 
       <AdminModal
         key={selectedProject?.id || 'admin'}
