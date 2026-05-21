@@ -31,6 +31,7 @@ import {
   TableProperties,
   Trash2,
   Upload,
+  Users,
   Video,
   X,
 } from 'lucide-react'
@@ -43,18 +44,59 @@ const LAST_SYNC_KEY = 'bsdi-dashboard-last-sync-v1'
 const LEGACY_PROJECT_KEYS = ['bsdi-dashboard-projects-v6', 'bsdi-dashboard-projects-v5']
 const MEDIA_DB_NAME = 'bsdi-dashboard-media'
 const MEDIA_STORE_NAME = 'files'
-const API_STATE_ENDPOINT = '/api/state'
-const API_MEDIA_ENDPOINT = '/api/media'
+const API_BASE_URL = (import.meta.env.VITE_BSDI_API_BASE_URL || '').replace(/\/+$/, '')
+const API_STATE_ENDPOINT = `${API_BASE_URL}/api/state`
+const API_MEDIA_ENDPOINT = `${API_BASE_URL}/api/media`
 const API_UNAVAILABLE_MESSAGE = 'Shared sync server is not enabled on this deployment'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
+const BALOCHISTAN_MAP = '/brand/balochistan-district-map-print.jpg'
 const LANDMARK_CARDS = [
   { src: '/brand/landmark-gate.png', alt: 'Balochistan gateway landmark' },
   { src: '/brand/landmark-princess-of-hope.png', alt: 'Princess of Hope' },
   { src: '/brand/landmark-residency.png', alt: 'Quaid-e-Azam Residency' },
   { src: '/brand/landmark-fort.png', alt: 'Balochistan fort landmark' },
 ]
+const MAP_POINTS = {
+  Awaran: { x: 47, y: 79 },
+  Barkhan: { x: 82, y: 42 },
+  Chaghai: { x: 31, y: 44 },
+  Chaman: { x: 60, y: 25 },
+  'Dera Bugti': { x: 78, y: 57 },
+  Duki: { x: 73, y: 35 },
+  Gwadar: { x: 36, y: 92 },
+  Harnai: { x: 67, y: 35 },
+  Hub: { x: 60, y: 89 },
+  Jaffarabad: { x: 69, y: 64 },
+  'Jhal Magsi': { x: 65, y: 62 },
+  Kachhi: { x: 66, y: 54 },
+  Kalat: { x: 58, y: 55 },
+  Kech: { x: 30, y: 82 },
+  Kharan: { x: 46, y: 50 },
+  Khuzdar: { x: 56, y: 68 },
+  'Killa Abdullah': { x: 59, y: 30 },
+  'Killa Saifullah': { x: 71, y: 26 },
+  Kohlu: { x: 76, y: 47 },
+  Lasbela: { x: 59, y: 80 },
+  Loralai: { x: 75, y: 33 },
+  Mastung: { x: 60, y: 45 },
+  'Musa Khel': { x: 83, y: 29 },
+  Naseerabad: { x: 69, y: 58 },
+  Noushki: { x: 49, y: 39 },
+  Panjgur: { x: 40, y: 75 },
+  Pishin: { x: 63, y: 28 },
+  Quetta: { x: 58, y: 36 },
+  Sherani: { x: 85, y: 21 },
+  Sibi: { x: 68, y: 43 },
+  Sohbatpur: { x: 73, y: 61 },
+  Surab: { x: 52, y: 58 },
+  'Usta Muhammad': { x: 70, y: 65 },
+  Washuk: { x: 41, y: 62 },
+  Zhob: { x: 78, y: 20 },
+  Ziarat: { x: 64, y: 32 },
+}
 const phaseOptions = ['Total', 'Phase 1', 'Phase 2', 'Phase 3']
 const projectPhaseOptions = phaseOptions.filter((phase) => phase !== 'Total')
+const DISTRICT_FILTER_ALL = 'All Districts'
 const pakistanDateFormatter = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
   month: 'short',
@@ -66,6 +108,7 @@ const fieldList = [
   ['title', 'Project title', 'text'],
   ['phase', 'Phase', 'text'],
   ['category', 'Category', 'text'],
+  ['beneficiary', 'Beneficiary', 'text'],
   ['cost', 'Cost', 'text'],
   ['progress', 'Progress', 'text'],
   ['duration', 'Duration', 'text'],
@@ -87,6 +130,7 @@ function createBlankProject(divisions) {
     division: divisions[0] || 'Kalat Division',
     district: '',
     category: 'Infrastructure',
+    beneficiary: '',
     cost: '',
     duration: '',
     nitDate: '',
@@ -117,6 +161,36 @@ function toId(value) {
     .replace(/&/g, 'and')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || `item-${Date.now()}`
+}
+
+function mapKey(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+const MAP_POINT_LOOKUP = Object.fromEntries(
+  Object.entries(MAP_POINTS).map(([name, point]) => [mapKey(name), point]),
+)
+
+function getMapPoint(name) {
+  return MAP_POINT_LOOKUP[mapKey(name)] || null
+}
+
+function getProjectMapPoint(projects = [], fallbackName = '') {
+  const direct = getMapPoint(fallbackName)
+  if (direct) return direct
+  const points = projects
+    .map((project) => getMapPoint(project.district))
+    .filter(Boolean)
+  if (!points.length) return null
+  return {
+    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+    y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+  }
+}
+
+function resolveSyncedMediaSrc(src) {
+  if (!API_BASE_URL || !src || !src.startsWith('/synced-media/')) return src
+  return `${API_BASE_URL}${src}`
 }
 
 function cleanPhaseCatalog(phases = [], projects = []) {
@@ -269,6 +343,7 @@ function cleanProject(project) {
   delete cleanedBase.notes
   delete cleanedBase.sourcePath
   delete cleanedBase.videoDriveLink
+  delete cleanedBase.beneficiaries
   const title = project.title?.trim() || 'Untitled project'
   const id = project.id?.trim() || `project-${Date.now()}`
   const media = Array.isArray(project.media)
@@ -277,6 +352,7 @@ function cleanProject(project) {
         id: item.id || `${id}-media-${String(index + 1).padStart(2, '0')}`,
         projectId: item.projectId || id,
         type: item.type || 'image',
+        src: resolveSyncedMediaSrc(item.src || ''),
         name: item.name || item.originalName || `media-${index + 1}`,
         order: item.order || index + 1,
       }))
@@ -293,6 +369,7 @@ function cleanProject(project) {
     division: project.division?.trim() || 'Unassigned',
     district: project.district?.trim() || 'Unassigned',
     category: project.category?.trim() || 'Infrastructure',
+    beneficiary: project.beneficiary?.trim() || project.beneficiaries?.trim() || '',
     driveLink: project.driveLink?.trim() || '',
     description: project.description?.trim() || '',
     media,
@@ -304,6 +381,8 @@ function cleanProject(project) {
       project.division,
       project.district,
       project.category,
+      project.beneficiary,
+      project.beneficiaries,
       project.description,
       project.contractor,
       project.scope,
@@ -1169,6 +1248,7 @@ function ProjectDetail({ project, onEditProject }) {
             <DetailLine icon={FileJson} label="Serial" value={project.slide ? `#${project.slide}` : project.id} />
             <DetailLine icon={MapPin} label="District" value={project.district} />
             <DetailLine icon={Tags} label="Category" value={project.category} />
+            <DetailLine icon={Users} label="Beneficiary" value={project.beneficiary} />
             <DetailLine icon={CircleDollarSign} label="Cost" value={project.cost} />
             <DetailLine icon={CalendarDays} label="Duration" value={project.duration} />
             <DetailLine icon={Building2} label="Contractor" value={project.contractor} />
@@ -1205,10 +1285,51 @@ function ProjectDetail({ project, onEditProject }) {
   )
 }
 
+function PrintLandmarkStrip({ dark = false }) {
+  return (
+    <div className={`print-landmark-strip${dark ? ' print-landmark-strip-dark' : ''}`}>
+      {LANDMARK_CARDS.map((landmark) => (
+        <img
+          key={landmark.src}
+          src={landmark.src}
+          alt={landmark.alt}
+          loading="eager"
+          decoding="sync"
+        />
+      ))}
+    </div>
+  )
+}
+
+function PrintMapPanel({ title, subtitle, markerLabel, markerPoint }) {
+  return (
+    <div className="print-map-panel">
+      <div className="print-map-text">
+        <p>{title}</p>
+        <span>{subtitle}</span>
+      </div>
+      <div className="print-map-frame">
+        <div className="print-map-canvas">
+          <img src={BALOCHISTAN_MAP} alt="Balochistan district map" loading="eager" decoding="sync" />
+          {markerPoint ? (
+            <span
+              className="print-map-marker"
+              style={{ left: `${markerPoint.x}%`, top: `${markerPoint.y}%` }}
+            >
+              <span>{markerLabel}</span>
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PrintReportProjectPage({ project, index, divisionName, districtName }) {
-  const images = (project.media || []).filter((item) => item.type !== 'video').slice(0, 6)
+  const images = (project.media || []).filter((item) => item.type !== 'video').slice(0, 8)
   const videoCount = (project.media || []).filter((item) => item.type === 'video').length
   const serial = project.slide ? `#${project.slide}` : String(index + 1).padStart(3, '0')
+  const imageLayoutClass = `print-project-images-${Math.min(images.length, 8)}`
 
   return (
     <article className="print-project-page">
@@ -1228,6 +1349,7 @@ function PrintReportProjectPage({ project, index, divisionName, districtName }) 
         <span>Phase <strong>{project.phase || 'Phase 1'}</strong></span>
         <span>Cost <strong>{project.cost || 'Not added'}</strong></span>
         <span>Category <strong>{project.category || 'Unassigned'}</strong></span>
+        <span>Beneficiary <strong>{project.beneficiary || 'Not added'}</strong></span>
         <span>Progress <strong>{project.progress || 'Completed'}</strong></span>
       </div>
       {project.scope || project.description ? (
@@ -1237,18 +1359,18 @@ function PrintReportProjectPage({ project, index, divisionName, districtName }) 
       ) : null}
       {images.length ? (
         <>
-        <p className="print-gallery-title">Project Images</p>
-        <div className="print-project-images">
-          {images.map((image, imageIndex) => (
-            <img
-              key={image.id || `${project.id}-print-image-${imageIndex}`}
-              src={image.src}
-              alt={image.name || project.title}
-              loading="eager"
-              decoding="sync"
-            />
-          ))}
-        </div>
+          <p className="print-gallery-title">Project Images</p>
+          <div className={`print-project-images ${imageLayoutClass}`}>
+            {images.map((image, imageIndex) => (
+              <img
+                key={image.id || `${project.id}-print-image-${imageIndex}`}
+                src={image.src}
+                alt={image.name || project.title}
+                loading="eager"
+                decoding="sync"
+              />
+            ))}
+          </div>
         </>
       ) : (
         <div className="print-project-placeholder">
@@ -1264,7 +1386,7 @@ function PrintReportProjectPage({ project, index, divisionName, districtName }) 
   )
 }
 
-function FullPrintReport({ projects, stats, phaseSelection, date }) {
+function FullPrintReport({ projects, stats, phaseSelection, districtSelection, date }) {
   const reportDivisions = useMemo(
     () =>
       unique(projects.map((project) => project.division)).map((divisionName) => {
@@ -1296,15 +1418,19 @@ function FullPrintReport({ projects, stats, phaseSelection, date }) {
   return (
     <section className="print-only print-full-report">
       <section className="print-cover-page">
-        <div className="print-cover-top">
-          <img src={BRAND_LOGO} alt="BSDI logo" />
-          <div>
-            <p>Balochistan Special Development Initiative</p>
-            <h1>Completed Projects BSDI</h1>
+        <div className="print-cover-hero">
+          <div className="print-cover-top">
+            <img src={BRAND_LOGO} alt="BSDI logo" />
+            <div>
+              <p>Balochistan Special Development Initiative</p>
+              <h1>Completed Projects BSDI</h1>
+            </div>
           </div>
+          <PrintLandmarkStrip dark />
         </div>
         <div className="print-cover-badges">
           <span>{phaseSelection}</span>
+          <span>{districtSelection}</span>
           <span>{date}</span>
           <span>{reportDivisions.length} divisions</span>
         </div>
@@ -1340,8 +1466,13 @@ function FullPrintReport({ projects, stats, phaseSelection, date }) {
       {reportDivisions.map((division) => (
         <section key={division.name} className="print-division-group">
           <section className="print-division-page">
-            <p className="print-kicker">Division Main Page</p>
-            <h2>{division.name}</h2>
+            <div className="print-page-heading">
+              <div>
+                <p className="print-kicker">Division Main Page</p>
+                <h2>{division.name}</h2>
+              </div>
+              <PrintLandmarkStrip />
+            </div>
             <div className="print-section-stats">
               <div>
                 <p>Projects</p>
@@ -1378,6 +1509,12 @@ function FullPrintReport({ projects, stats, phaseSelection, date }) {
                 </div>
               </div>
             </div>
+            <PrintMapPanel
+              title="Division Map"
+              subtitle={`${division.name} highlighted by active district coverage`}
+              markerLabel={division.name.replace(' Division', '')}
+              markerPoint={getProjectMapPoint(division.projects, division.name)}
+            />
           </section>
 
           {division.districts.map((district) => (
@@ -1389,6 +1526,7 @@ function FullPrintReport({ projects, stats, phaseSelection, date }) {
                     <h2>{district.name}</h2>
                     <p>{division.name}</p>
                   </div>
+                  <PrintLandmarkStrip />
                   <div className="print-district-stats">
                     <span>{district.projects.length} projects</span>
                     <span>{district.media} media</span>
@@ -1403,6 +1541,12 @@ function FullPrintReport({ projects, stats, phaseSelection, date }) {
                 <p className="print-district-note">
                   Project detail pages follow separately for clean printing and image visibility.
                 </p>
+                <PrintMapPanel
+                  title="District Map"
+                  subtitle={`${district.name} highlighted on Balochistan district map`}
+                  markerLabel={district.name}
+                  markerPoint={getProjectMapPoint(district.projects, district.name)}
+                />
               </section>
               {district.projects.map((project, index) => (
                 <PrintReportProjectPage
@@ -1829,8 +1973,11 @@ function ProjectDetailsFlow({
   const [projectIndex, setProjectIndex] = useState(focusedIndex)
 
   const divisionCards = useMemo(
-    () =>
-      unique([...divisionCatalog.map((division) => division.name), ...projects.map((project) => project.division)])
+    () => {
+      const names = projects.length
+        ? unique(projects.map((project) => project.division))
+        : unique([...divisionCatalog.map((division) => division.name), ...projects.map((project) => project.division)])
+      return names
         .map((name) => {
         const item = {
           name,
@@ -1843,7 +1990,8 @@ function ProjectDetailsFlow({
           media: divisionProjects.reduce((sum, project) => sum + (project.media?.length || 0), 0),
           categories: countBy(divisionProjects, 'category').slice(0, 3),
         }
-      }),
+      })
+    },
     [divisionCatalog, projects],
   )
 
@@ -1853,11 +2001,14 @@ function ProjectDetailsFlow({
   )
 
   const districtCards = useMemo(
-    () =>
-      unique([
-        ...(divisionCatalog.find((division) => division.name === selectedDivision)?.districts || []),
-        ...divisionProjects.map((project) => project.district),
-      ]).map((name) => {
+    () => {
+      const names = divisionProjects.length
+        ? unique(divisionProjects.map((project) => project.district))
+        : unique([
+            ...(divisionCatalog.find((division) => division.name === selectedDivision)?.districts || []),
+            ...divisionProjects.map((project) => project.district),
+          ])
+      return names.map((name) => {
         const item = {
           name,
           count: divisionProjects.filter((project) => project.district === name).length,
@@ -1868,7 +2019,8 @@ function ProjectDetailsFlow({
           media: districtProjects.reduce((sum, project) => sum + (project.media?.length || 0), 0),
           categories: countBy(districtProjects, 'category').slice(0, 3),
         }
-      }),
+      })
+    },
     [divisionCatalog, divisionProjects, selectedDivision],
   )
 
@@ -3145,6 +3297,15 @@ function InsightsPanel({ projects, stats, phaseSelection }) {
   )
   const topDivision = divisionCounts[0]
   const topDistrict = districtCounts[0]
+  const topDistrictPhaseCounts = topDistrict
+    ? ['Phase 1', 'Phase 2'].map((phase) => ({
+        phase,
+        count: projects.filter(
+          (project) => project.district === topDistrict.name && (project.phase || 'Phase 1') === phase,
+        ).length,
+      }))
+    : []
+  const topDistrictMaxPhaseCount = Math.max(...topDistrictPhaseCounts.map((item) => item.count), 1)
   const completedPercent = stats.completed ? 100 : 0
   const mediaPercent = stats.media ? Math.min((stats.media / 1200) * 100, 100) : 0
   const budgetValueMn = Number(stats.budgetMn) || 0
@@ -3202,6 +3363,22 @@ function InsightsPanel({ projects, stats, phaseSelection }) {
           <p className="mt-1 text-sm font-semibold text-emerald-700">
             {topDistrict ? `${topDistrict.count} projects` : ''}
           </p>
+          {topDistrict ? (
+            <div className="mt-3 space-y-2">
+              {topDistrictPhaseCounts.map((item) => (
+                <div key={item.phase} className="grid grid-cols-[72px_minmax(0,1fr)_32px] items-center gap-2">
+                  <span className="text-xs font-bold text-emerald-800">{item.phase}</span>
+                  <span className="h-1.5 overflow-hidden rounded-full bg-emerald-50">
+                    <span
+                      className="block h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-700"
+                      style={{ width: `${Math.max((item.count / topDistrictMaxPhaseCount) * 100, item.count ? 8 : 0)}%` }}
+                    />
+                  </span>
+                  <span className="text-right text-xs font-black text-emerald-800">{item.count}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -3222,6 +3399,7 @@ export default function App() {
   const [divisionCatalog, setDivisionCatalog] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [phaseSelection, setPhaseSelection] = useState('Total')
+  const [districtSelection, setDistrictSelection] = useState(DISTRICT_FILTER_ALL)
   const [activeTab, setActiveTab] = useState('insights')
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminAuthed, setAdminAuthed] = useState(false)
@@ -3459,13 +3637,25 @@ export default function App() {
     }
   }, [])
 
-  const phaseProjects = useMemo(
+  const districtFilterOptions = useMemo(
     () =>
+      unique([
+        ...divisionCatalog.flatMap((division) => division.districts || []),
+        ...projects.map((project) => project.district),
+      ]),
+    [divisionCatalog, projects],
+  )
+
+  const phaseProjects = useMemo(() => {
+    const phaseFiltered =
       phaseSelection === 'Total'
         ? projects
-        : projects.filter((project) => (project.phase || 'Phase 1') === phaseSelection),
-    [phaseSelection, projects],
-  )
+        : projects.filter((project) => (project.phase || 'Phase 1') === phaseSelection)
+
+    return districtSelection === DISTRICT_FILTER_ALL
+      ? phaseFiltered
+      : phaseFiltered.filter((project) => project.district === districtSelection)
+  }, [districtSelection, phaseSelection, projects])
 
   const availableProjectPhases = useMemo(
     () => unique([...phaseCatalog.map((phase) => phase.name), ...projects.map((project) => project.phase)]),
@@ -3476,6 +3666,16 @@ export default function App() {
     () => ['Total', ...availableProjectPhases],
     [availableProjectPhases],
   )
+
+  useEffect(() => {
+    if (
+      districtSelection !== DISTRICT_FILTER_ALL &&
+      !districtFilterOptions.includes(districtSelection)
+    ) {
+      setDistrictSelection(DISTRICT_FILTER_ALL)
+      setSelectedId('')
+    }
+  }, [districtFilterOptions, districtSelection])
 
   const divisions = useMemo(
     () =>
@@ -3681,7 +3881,10 @@ export default function App() {
       body,
     })
 
-    return result.media || []
+    return (result.media || []).map((item) => ({
+      ...item,
+      src: resolveSyncedMediaSrc(item.src || ''),
+    }))
   }
 
   function saveProjects(next) {
@@ -3857,7 +4060,22 @@ export default function App() {
     ? 'Upload pending edits, then load the latest shared database'
     : 'Sync with the shared database when the Node server is available'
 
+  function reportPdfUrl() {
+    const params = new URLSearchParams({
+      phase: phaseSelection,
+      district: districtSelection,
+    })
+    return `${API_BASE_URL}/api/report/pdf?${params.toString()}`
+  }
+
   function printAllProjects() {
+    if (online && syncAvailable) {
+      const reportWindow = window.open(reportPdfUrl(), '_blank', 'noopener,noreferrer')
+      if (reportWindow) {
+        notify('Opening PDF report', 'The generated report PDF is opening in a new tab.', 'info')
+        return
+      }
+    }
     setPrintReportReady(true)
     setPrintRequested(true)
   }
@@ -3916,6 +4134,31 @@ export default function App() {
                     {availablePhaseOptions.map((phase) => (
                       <option key={phase} value={phase} className="bg-slate-800 text-white">
                         {phase}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronRight
+                    className="pointer-events-none absolute right-2 top-1 rotate-90 text-white/60"
+                    size={13}
+                  />
+                </label>
+                <label className="relative">
+                  <select
+                    aria-label="District"
+                    value={districtSelection}
+                    onChange={(event) => {
+                      setDistrictSelection(event.target.value)
+                      setSelectedId('')
+                      setDetailsFocusProjectId('')
+                    }}
+                    className="h-7 max-w-[170px] appearance-none rounded-full border border-white/20 bg-white/10 pl-3 pr-7 text-xs font-semibold text-white outline-none backdrop-blur-sm transition hover:bg-white/15"
+                  >
+                    <option value={DISTRICT_FILTER_ALL} className="bg-slate-800 text-white">
+                      {DISTRICT_FILTER_ALL}
+                    </option>
+                    {districtFilterOptions.map((district) => (
+                      <option key={district} value={district} className="bg-slate-800 text-white">
+                        {district}
                       </option>
                     ))}
                   </select>
@@ -4039,7 +4282,7 @@ export default function App() {
             title="Print full completed-project report"
           >
             <Printer size={15} />
-            Print All
+            Print
           </button>
         </div>
 
@@ -4114,6 +4357,7 @@ export default function App() {
             projects={phaseProjects}
             stats={stats}
             phaseSelection={phaseSelection}
+            districtSelection={districtSelection}
             date={pakistanDisplayDate}
           />
         </div>

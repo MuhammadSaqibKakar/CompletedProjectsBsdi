@@ -35,6 +35,12 @@ The server keeps the active database at:
 BSDI_DATA_DIR/bsdi-db.json
 ```
 
+Generated report PDFs are cached at:
+
+```text
+BSDI_DATA_DIR/generated-reports/
+```
+
 If `BSDI_DATA_DIR` is not set, local development uses:
 
 ```text
@@ -48,6 +54,10 @@ public/database/bsdi-db.json
 ```
 
 After that, the persistent server database becomes the source for online users.
+
+For Hostinger production, set `BSDI_DATA_DIR` to a writable persistent folder outside the redeployed app files. If the frontend is hosted separately from the Node API, build the frontend with `VITE_BSDI_API_BASE_URL` set to the Node API domain.
+
+When an online save succeeds, old PDF files are deleted and the default `Total / All Districts` report starts rebuilding. Filter-specific PDFs rebuild on demand when opened.
 
 ## Backup Routine
 

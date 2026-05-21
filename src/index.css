@@ -326,8 +326,8 @@ video {
   position: fixed;
   left: -100000px;
   top: 0;
-  width: 794px;
-  max-width: 794px;
+  width: 1123px;
+  max-width: 1123px;
   opacity: 0;
   pointer-events: none;
 }
@@ -339,8 +339,8 @@ video {
 
 @media print {
   @page {
-    size: A4;
-    margin: 12mm;
+    size: A4 landscape;
+    margin: 8mm 8mm 8mm 20mm;
   }
 
   * {
@@ -399,8 +399,36 @@ video {
     page-break-after: always;
   }
 
+  .print-cover-page,
+  .print-division-page,
+  .print-district-page,
+  .print-project-page {
+    position: relative;
+    box-sizing: border-box;
+    min-height: 178mm;
+    margin: 0;
+  }
+
+  .print-cover-page::before,
+  .print-division-page::before,
+  .print-district-page::before,
+  .print-project-page::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 14px;
+    bottom: 14px;
+    width: 7px;
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at 50% 16%, #ffffff 0 2.5px, transparent 3px),
+      radial-gradient(circle at 50% 50%, #ffffff 0 2.5px, transparent 3px),
+      radial-gradient(circle at 50% 84%, #ffffff 0 2.5px, transparent 3px),
+      linear-gradient(180deg, #047857, #10b981);
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.22), 0 8px 18px rgba(6, 95, 70, 0.16);
+  }
+
   .print-cover-page {
-    min-height: 255mm;
     overflow: hidden;
     border-radius: 20px;
     background:
@@ -408,14 +436,55 @@ video {
       radial-gradient(circle at 10% 86%, rgba(250, 204, 21, 0.20), transparent 28%),
       linear-gradient(135deg, #052e2b 0%, #065f46 52%, #0f766e 100%);
     color: #ffffff;
-    padding: 22px;
+    padding: 16px 18px 16px 30px;
     box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.12);
+  }
+
+  .print-cover-hero,
+  .print-page-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
   }
 
   .print-cover-top {
     display: flex;
     align-items: center;
     gap: 14px;
+  }
+
+  .print-landmark-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: 312px;
+    max-width: 42%;
+    border: 1px solid rgba(16, 185, 129, 0.18);
+    border-radius: 14px;
+    background: rgba(236, 253, 245, 0.74);
+    padding: 6px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
+  }
+
+  .print-landmark-strip-dark {
+    max-width: 44%;
+    border-color: rgba(251, 191, 36, 0.42);
+    background: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+  }
+
+  .print-landmark-strip img {
+    width: 100%;
+    height: 44px;
+    border: 1px solid rgba(245, 158, 11, 0.38);
+    border-radius: 10px;
+    object-fit: cover;
+  }
+
+  .print-landmark-strip-dark img {
+    height: 60px;
+    border-color: rgba(253, 224, 71, 0.50);
   }
 
   .print-cover-top img {
@@ -446,7 +515,7 @@ video {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 18px;
+    margin-top: 14px;
   }
 
   .print-cover-badges span {
@@ -462,7 +531,7 @@ video {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
-    margin-top: 22px;
+    margin-top: 16px;
   }
 
   .print-cover-stats div {
@@ -491,9 +560,9 @@ video {
 
   .print-cover-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
-    margin-top: 22px;
+    margin-top: 16px;
   }
 
   .print-cover-division-card {
@@ -524,6 +593,118 @@ video {
     font-weight: 700;
   }
 
+  .print-map-panel {
+    margin-top: 12px;
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.84);
+    padding: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .print-cover-page .print-map-panel {
+    margin-top: 15px;
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .print-map-text {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 7px;
+  }
+
+  .print-map-text p {
+    margin: 0;
+    color: #064e3b;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .print-cover-page .print-map-text p {
+    color: #ffffff;
+  }
+
+  .print-map-text span {
+    color: #64748b;
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  .print-cover-page .print-map-text span {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .print-map-frame {
+    position: relative;
+    overflow: hidden;
+    height: 58mm;
+    border-radius: 12px;
+    border: 1px solid rgba(6, 95, 70, 0.18);
+    background: #f8fafc;
+  }
+
+  .print-cover-page .print-map-frame {
+    height: 60mm;
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .print-division-page .print-map-frame,
+  .print-district-page .print-map-frame {
+    height: 78mm;
+  }
+
+  .print-map-canvas {
+    position: relative;
+    height: 100%;
+    aspect-ratio: 2048 / 1515;
+    margin: 0 auto;
+    background: #ffffff;
+  }
+
+  .print-map-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    filter: saturate(1.05) contrast(1.02);
+  }
+
+  .print-map-marker {
+    position: absolute;
+    z-index: 2;
+    width: 22px;
+    height: 22px;
+    transform: translate(-50%, -50%);
+    border: 3px solid #ffffff;
+    border-radius: 999px;
+    background: #ef4444;
+    box-shadow:
+      0 0 0 8px rgba(239, 68, 68, 0.24),
+      0 0 0 18px rgba(239, 68, 68, 0.12),
+      0 10px 22px rgba(127, 29, 29, 0.34);
+  }
+
+  .print-map-marker span {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 8px);
+    transform: translateX(-50%);
+    max-width: 112px;
+    border-radius: 999px;
+    background: #064e3b;
+    color: #ffffff;
+    padding: 4px 7px;
+    font-size: 8px;
+    font-weight: 900;
+    white-space: nowrap;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.20);
+  }
+
   .print-division-page,
   .print-district-page {
     border: 1.5px solid #bbf7d0;
@@ -531,7 +712,7 @@ video {
     background:
       radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.14), transparent 32%),
       linear-gradient(145deg, #ffffff 0%, #ffffff 52%, #ecfdf5 100%);
-    padding: 16px;
+    padding: 14px 16px 14px 30px;
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
   }
 
@@ -624,6 +805,11 @@ video {
     align-items: flex-start;
   }
 
+  .print-district-head .print-landmark-strip {
+    flex: 1 1 280px;
+    max-width: 330px;
+  }
+
   .print-district-head > div > p:not(.print-kicker) {
     margin: 5px 0 0;
     color: #64748b;
@@ -664,7 +850,6 @@ video {
   }
 
   .print-project-page {
-    min-height: 255mm;
     break-after: page;
     page-break-after: always;
     overflow: hidden;
@@ -673,7 +858,7 @@ video {
     background:
       radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.13), transparent 30%),
       linear-gradient(145deg, #ffffff 0%, #ffffff 48%, #f0fdf4 100%);
-    padding: 16px;
+    padding: 14px 16px 14px 30px;
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
   }
 
@@ -687,7 +872,7 @@ video {
   .print-project-page h2 {
     margin: 0;
     color: #020617;
-    font-size: 24px;
+    font-size: 21px;
     line-height: 1.12;
     font-weight: 950;
   }
@@ -719,9 +904,9 @@ video {
 
   .print-project-meta {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
-    margin-top: 14px;
+    margin-top: 10px;
   }
 
   .print-project-meta span {
@@ -746,7 +931,7 @@ video {
   }
 
   .print-project-scope {
-    margin-top: 12px;
+    margin-top: 9px;
     border: 1px solid #e2e8f0;
     border-radius: 14px;
     background: #ffffff;
@@ -762,7 +947,7 @@ video {
   }
 
   .print-gallery-title {
-    margin: 14px 0 8px;
+    margin: 10px 0 7px;
     color: #065f46;
     font-size: 10px;
     font-weight: 900;
@@ -772,22 +957,70 @@ video {
 
   .print-project-images {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: dense;
     gap: 8px;
+    height: 82mm;
   }
 
   .print-project-images img {
     width: 100%;
-    aspect-ratio: 16 / 10;
+    height: 100%;
+    min-height: 0;
     border: 1px solid #d1fae5;
     border-radius: 12px;
     background: #f8fafc;
     object-fit: cover;
+    box-shadow: 0 6px 15px rgba(15, 23, 42, 0.09);
+  }
+
+  .print-project-images-1 {
+    grid-template-columns: minmax(0, 1fr);
+    height: 96mm;
+  }
+
+  .print-project-images-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    height: 92mm;
+  }
+
+  .print-project-images-3 {
+    grid-template-columns: 1.35fr 0.9fr;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    height: 92mm;
+  }
+
+  .print-project-images-3 img:first-child,
+  .print-project-images-4 img:first-child,
+  .print-project-images-5 img:first-child,
+  .print-project-images-6 img:first-child,
+  .print-project-images-7 img:first-child,
+  .print-project-images-8 img:first-child {
+    grid-row: span 2;
+  }
+
+  .print-project-images-4 {
+    grid-template-columns: 1.2fr repeat(2, minmax(0, 0.9fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    height: 88mm;
+  }
+
+  .print-project-images-5,
+  .print-project-images-6 {
+    grid-template-columns: 1.18fr repeat(3, minmax(0, 0.9fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    height: 86mm;
+  }
+
+  .print-project-images-7,
+  .print-project-images-8 {
+    grid-template-columns: 1.12fr repeat(4, minmax(0, 0.85fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    height: 84mm;
   }
 
   .print-project-placeholder {
     display: grid;
-    min-height: 150px;
+    min-height: 86mm;
     place-items: center;
     margin-top: 14px;
     border: 1px dashed #cbd5e1;

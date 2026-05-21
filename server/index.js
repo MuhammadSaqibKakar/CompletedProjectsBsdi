@@ -5,6 +5,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
+import { clearReportCache, generateCachedReport, warmDefaultReport } from './report.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -13,6 +14,7 @@ const bundledDbPath = path.join(rootDir, 'public', 'database', 'bsdi-db.json')
 const dataDir = path.resolve(process.env.BSDI_DATA_DIR || path.join(rootDir, 'server-data'))
 const mediaDir = path.join(dataDir, 'media')
 const tempDir = path.join(dataDir, 'tmp')
+const reportsDir = path.join(dataDir, 'generated-reports')
 const liveDbPath = path.join(dataDir, 'bsdi-db.json')
 const port = Number(process.env.PORT || 4174)
 const uploadLimit = Number(process.env.BSDI_MAX_UPLOAD_BYTES || 1024 * 1024 * 1024)
@@ -22,6 +24,7 @@ const uploadLimit = Number(process.env.BSDI_MAX_UPLOAD_BYTES || 1024 * 1024 * 10
 fsSync.mkdirSync(dataDir, { recursive: true })
 fsSync.mkdirSync(mediaDir, { recursive: true })
 fsSync.mkdirSync(tempDir, { recursive: true })
+fsSync.mkdirSync(reportsDir, { recursive: true })
 
 const upload = multer({
   dest: tempDir,
@@ -175,6 +178,27 @@ app.get('/api/state', async (_req, res, next) => {
   }
 })
 
+app.get('/api/report/pdf', async (req, res, next) => {
+  try {
+    const state = await readDashboardState()
+    const reportPath = await generateCachedReport({
+      data: state,
+      reportsDir,
+      rootDir,
+      dataDir,
+      filters: {
+        phase: req.query.phase || 'Total',
+        district: req.query.district || 'All Districts',
+      },
+    })
+    res.set('Cache-Control', 'no-store')
+    res.type('application/pdf')
+    res.sendFile(reportPath)
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.put('/api/state', async (req, res, next) => {
   try {
     const current = await assertAdminPassword(req)
@@ -185,6 +209,8 @@ app.put('/api/state', async (req, res, next) => {
     }
     const merged = mergeDashboardState(current, incoming)
     await writeJsonAtomic(liveDbPath, merged)
+    await clearReportCache(reportsDir)
+    warmDefaultReport({ data: merged, reportsDir, rootDir, dataDir })
     res.json({ ok: true, updatedAt: merged.updatedAt, data: merged })
   } catch (error) {
     next(error)
@@ -271,4 +297,7 @@ app.use((error, _req, res, next) => {
 app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
+  readDashboardState()
+    .then((state) => warmDefaultReport({ data: state, reportsDir, rootDir, dataDir }))
+    .catch((error) => console.warn(`Initial report generation skipped: ${error.message}`))
 })

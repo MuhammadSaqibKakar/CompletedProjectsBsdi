@@ -41,16 +41,17 @@ The bundled database is stored at `public/database/bsdi-db.json`.
 
 ## Main Features
 
-- Phase selector for `Total`, `Phase 1`, `Phase 2`, and future phases.
+- Phase selector for `Total`, `Phase 1`, `Phase 2`, and future phases, plus an A-Z district filter for all 36 districts.
 - Insights dashboard with completed counts, media totals, budget, top division/district, division chart, and category donut chart.
 - Project Details flow: division -> district -> project sequence.
 - Project media viewer with image zoom, video playback, thumbnails, and previous/next controls.
 - Drive folder cards for view-only project folder links.
 - Hidden admin unlock via `Ctrl + Shift + E`.
-- Admin editor for project records, phases, divisions, districts, images, videos, and project details.
+- Admin editor for project records, phases, divisions, districts, images, videos, beneficiary details, and project details.
 - Toast notifications for save, delete, upload, lock/unlock, sync, and error states.
 - Offline local cache for meeting mode.
 - Shared sync API for multi-laptop online edits.
+- Server-generated PDF report cache: the Print button opens `/api/report/pdf` when the Node API is available.
 - Render/Hostinger-compatible Node deployment path.
 
 ## Project Structure
@@ -119,6 +120,7 @@ The server exposes:
 - `GET /api/state` - current shared database
 - `PUT /api/state` - save full database snapshot
 - `POST /api/media` - upload image/video files
+- `GET /api/report/pdf` - generated report PDF for the selected phase/district
 - `/synced-media/...` - uploaded media files
 
 ## Admin Access
@@ -146,8 +148,13 @@ The app has three data layers:
 | Bundled DB | Ships with the app at `public/database/bsdi-db.json` |
 | Browser cache | Keeps last loaded data for offline meeting mode |
 | Server DB | Stores shared online edits in `BSDI_DATA_DIR/bsdi-db.json` |
+| Server report cache | Stores generated PDFs in `BSDI_DATA_DIR/generated-reports/` |
 
 Admin edits save locally first. If the shared Node API is available, the app pushes the updated database to `/api/state`. If the user is offline or the deployment is frontend-only, edits stay on that laptop as pending local changes.
+
+After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report. Filtered reports are generated on demand and then cached.
+
+For split frontend/backend hosting, build the frontend with `VITE_BSDI_API_BASE_URL=https://your-node-api-domain` so `/api/state`, `/api/media`, and synced uploaded media resolve to the separate Node service. For a single Hostinger Node app, leave it unset.
 
 The header keeps a Sync button visible. Sync status pills appear only when there is something useful to show:
 
@@ -202,6 +209,8 @@ Build Command: npm ci && npm run build
 Start Command: npm run start
 Data Directory: writable persistent folder assigned to BSDI_DATA_DIR
 ```
+
+Set `BSDI_DATA_DIR` to a folder outside the redeployed app files, for example a persistent folder in the account home directory. That keeps `bsdi-db.json`, uploaded media, and generated report PDFs stable when the app code is redeployed.
 
 If Hostinger cannot guarantee persistent file storage across redeploys, move shared data to MySQL/Supabase and keep server media in persistent storage or cloud storage.
 
