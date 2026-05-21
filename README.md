@@ -36,7 +36,7 @@ The bundled database is stored at `public/database/bsdi-db.json`.
 - **Desktop shell:** Tauri
 - **Shared server:** Node.js + Express
 - **Upload handling:** Multer
-- **Data store:** JSON database with persistent server storage
+- **Data store:** MySQL for production shared data, JSON fallback for local/dev
 - **Media:** bundled local project media plus server-uploaded media
 
 ## Main Features
@@ -66,6 +66,7 @@ bsdi-dashboard/
     favicon.svg                 # BSDI favicon
   server/
     index.js                    # Express API, shared DB, uploads, static app server
+    storage.js                  # MySQL/JSON storage adapter with revision checks
   src/
     App.jsx                     # Dashboard UI, admin editor, offline/sync logic
     index.css                   # Tailwind component styles
@@ -118,7 +119,7 @@ The server exposes:
 
 - `GET /api/health` - server status
 - `GET /api/state` - current shared database
-- `PUT /api/state` - save full database snapshot
+- `PUT /api/state` - save full database snapshot with revision conflict protection
 - `POST /api/media` - upload image/video files
 - `GET /api/report/pdf` - generated report PDF for the selected phase/district
 - `/synced-media/...` - uploaded media files
@@ -131,26 +132,29 @@ Open admin unlock:
 Ctrl + Shift + E
 ```
 
-The admin password is stored in the database only:
+The admin password is stored in the active database only:
 
 ```text
-public/database/bsdi-db.json -> settings.adminPassword
+settings.adminPassword
 ```
 
-Do not hard-code the password in React, Express, README, or environment variables. The server reads the password from the active database state.
+Do not hard-code the password in React, Express, README, or environment variables. The server reads the password from the active MySQL row or JSON fallback state.
 
 ## Data And Sync Model
 
-The app has three data layers:
+The app has four data layers:
 
 | Layer | Purpose |
 | --- | --- |
 | Bundled DB | Ships with the app at `public/database/bsdi-db.json` |
 | Browser cache | Keeps last loaded data for offline meeting mode |
-| Server DB | Stores shared online edits in `BSDI_DATA_DIR/bsdi-db.json` |
+| Production DB | Stores shared online edits in MySQL table `bsdi_dashboard_state` |
+| JSON fallback | Stores shared online edits in `BSDI_DATA_DIR/bsdi-db.json` when MySQL env vars are not set |
 | Server report cache | Stores generated PDFs in `BSDI_DATA_DIR/generated-reports/` |
 
 Admin edits save locally first. If the shared Node API is available, the app pushes the updated database to `/api/state`. If the user is offline or the deployment is frontend-only, edits stay on that laptop as pending local changes.
+
+The server uses a revision number to stop silent overwrites. If two admins edit at the same time, the second stale save is rejected with a sync conflict so the user can sync latest data and save again.
 
 After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report. Filtered reports are generated on demand and then cached.
 
@@ -207,12 +211,28 @@ Framework: Express.js or Other
 Node Version: 22.x
 Build Command: npm ci && npm run build
 Start Command: npm run start
-Data Directory: writable persistent folder assigned to BSDI_DATA_DIR
+Entry File: server/index.js
 ```
 
-Set `BSDI_DATA_DIR` to a folder outside the redeployed app files, for example a persistent folder in the account home directory. That keeps `bsdi-db.json`, uploaded media, and generated report PDFs stable when the app code is redeployed.
+Create/connect a Hostinger MySQL database, then add environment variables:
 
-If Hostinger cannot guarantee persistent file storage across redeploys, move shared data to MySQL/Supabase and keep server media in persistent storage or cloud storage.
+```text
+DB_HOST=your-mysql-host
+DB_PORT=3306
+DB_NAME=your-database-name
+DB_USER=your-database-user
+DB_PASSWORD=your-database-password
+BSDI_DATA_DIR=../bsdi-data
+```
+
+`DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` keep the live project records in MySQL, so GitHub redeploys do not overwrite user-entered data. `BSDI_DATA_DIR` is still needed for uploaded media and generated PDF reports; keep it outside redeployed app files.
+
+If your host gives one connection string instead of separate fields, use:
+
+```text
+DATABASE_URL=mysql://user:password@host:3306/database
+BSDI_DATA_DIR=../bsdi-data
+```
 
 ## Git LFS
 
@@ -241,7 +261,7 @@ Recommended hosting storage:
 | 2000 projects with similar media | 20 GB comfortable |
 | Heavy video uploads | 50 GB or more |
 
-The JSON database itself is small. Media storage is the main growth factor.
+The MySQL/JSON database itself is small. Media storage is the main growth factor.
 
 ## Useful Commands
 
@@ -263,15 +283,21 @@ Fix: deploy as a Node Web Service/Node.js Web App, not a static frontend site.
 
 ### Admin password does not work
 
-Cause: the active server database may have a different `settings.adminPassword`.
+Cause: the active database may have a different `settings.adminPassword`.
 
-Fix: check the active DB in `BSDI_DATA_DIR/bsdi-db.json` on the server, not only the bundled DB in `public/database`.
+Fix: check the MySQL row in `bsdi_dashboard_state`, or the JSON fallback at `BSDI_DATA_DIR/bsdi-db.json` when MySQL is not configured.
 
 ### Data disappears after redeploy
 
-Cause: server data directory is not persistent.
+Cause: the app is running without MySQL and the server data directory is not persistent.
 
-Fix: set `BSDI_DATA_DIR` to persistent disk/storage. On Render, mount a disk at `/var/data` and set `BSDI_DATA_DIR=/var/data/bsdi`.
+Fix: configure the MySQL environment variables for production. Also keep `BSDI_DATA_DIR` persistent for uploads/reports.
+
+### Sync conflict appears
+
+Cause: another admin saved changes after this laptop loaded the data.
+
+Fix: press Sync to load the latest shared data, review the local change, then save again. The stale save is blocked so another user's work is not silently overwritten.
 
 ### Videos do not load after deploy
 

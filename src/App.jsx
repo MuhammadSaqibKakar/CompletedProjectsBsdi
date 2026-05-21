@@ -41,6 +41,7 @@ const FALLBACK_ADMIN_PASSWORD = ''
 const STORAGE_KEY = 'bsdi-dashboard-state-v1'
 const PENDING_SYNC_KEY = 'bsdi-dashboard-pending-sync-v1'
 const LAST_SYNC_KEY = 'bsdi-dashboard-last-sync-v1'
+const CONFLICT_BACKUP_KEY_PREFIX = 'bsdi-dashboard-conflict-backup-'
 const LEGACY_PROJECT_KEYS = ['bsdi-dashboard-projects-v6', 'bsdi-dashboard-projects-v5']
 const MEDIA_DB_NAME = 'bsdi-dashboard-media'
 const MEDIA_STORE_NAME = 'files'
@@ -673,6 +674,21 @@ function isApiUnavailableError(error) {
   return error?.code === 'API_UNAVAILABLE' || error?.status === 404
 }
 
+function isRevisionConflictError(error) {
+  return error?.code === 'REVISION_CONFLICT' || error?.status === 409
+}
+
+function saveConflictBackup(snapshot) {
+  if (!snapshot) return ''
+  const key = `${CONFLICT_BACKUP_KEY_PREFIX}${Date.now()}`
+  try {
+    localStorage.setItem(key, JSON.stringify(snapshot))
+    return key
+  } catch {
+    return ''
+  }
+}
+
 async function fetchJsonFromApi(url, options = {}) {
   let response
   try {
@@ -695,6 +711,10 @@ async function fetchJsonFromApi(url, options = {}) {
     if (contentType.includes('application/json')) {
       const body = await response.json()
       message = body.error || message
+      const error = new Error(message)
+      error.status = response.status
+      error.code = body.code || ''
+      throw error
     }
     const error = new Error(message)
     error.status = response.status
@@ -3729,13 +3749,20 @@ export default function App() {
     if (!navigator.onLine) throw new Error('No internet connection')
     if (!password) throw new Error('Unlock admin again before syncing online')
 
+    const revision =
+      snapshot?._serverRevision ||
+      baseData?.database?._serverRevision ||
+      baseData?._serverRevision ||
+      ''
+
     const result = await fetchJsonFromApi(API_STATE_ENDPOINT, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'X-BSDI-Admin-Password': password,
+        ...(revision ? { 'X-BSDI-Revision': String(revision) } : {}),
       },
-      body: JSON.stringify({ data: snapshot }),
+      body: JSON.stringify({ data: snapshot, baseRevision: revision || undefined }),
     })
     const syncedAt = result.updatedAt || new Date().toISOString()
     localStorage.removeItem(PENDING_SYNC_KEY)
@@ -3746,7 +3773,10 @@ export default function App() {
       lastSyncedAt: syncedAt,
       pending: false,
     })
-    if (result.data) setBaseData(normalizeDataset(result.data))
+    if (result.data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data))
+      setBaseData(normalizeDataset(result.data))
+    }
     return result.data
   }
 
@@ -3775,6 +3805,16 @@ export default function App() {
           notify('Saved locally', 'Shared sync is not enabled on this deployment yet.', 'info')
           return
         }
+        if (isRevisionConflictError(error)) {
+          saveConflictBackup(snapshot)
+          markPendingSync('Shared database changed before this save. Sync latest, review, then save again.')
+          notify(
+            'Sync conflict',
+            'Another admin saved first. Your edit is still kept on this laptop and was not overwritten.',
+            'error',
+          )
+          return
+        }
         markPendingSync(error.message || 'Online sync failed')
         notify('Saved locally', error.message || 'Online sync failed. Try Sync latest again.', 'info')
       })
@@ -3783,6 +3823,7 @@ export default function App() {
   async function syncLatest(options = {}) {
     if (syncBusy) return
     setSyncBusy(true)
+    let pendingSnapshot = null
     try {
       // Static deployments can still show the dashboard, but shared sync needs /api/state.
       if (!syncAvailable) {
@@ -3806,7 +3847,24 @@ export default function App() {
       }
 
       const localSnapshot = persistState(projects, phaseCatalog, divisionCatalog)
+      pendingSnapshot = localSnapshot
       const hasPending = localStorage.getItem(PENDING_SYNC_KEY) === 'true'
+      if (hasPending && !adminSessionPassword && !options.forcePull) {
+        setSyncState((current) => ({
+          ...current,
+          mode: 'pending',
+          message: 'Unlock admin before syncing local pending edits.',
+          pending: true,
+        }))
+        if (!options.quiet) {
+          notify(
+            'Unlock admin first',
+            'This laptop has pending edits. Unlock admin so they can upload safely before pulling remote data.',
+            'info',
+          )
+        }
+        return
+      }
       if (hasPending && adminSessionPassword && !options.forcePull) {
         await pushSnapshotToServer(localSnapshot, adminSessionPassword, {
           message: 'Local pending edits uploaded',
@@ -3846,6 +3904,24 @@ export default function App() {
             'Sync server not enabled',
             'This deployment is serving only the frontend. Deploy/run the Node Web Service to use shared sync.',
             'info',
+          )
+        }
+        return
+      }
+      if (isRevisionConflictError(error)) {
+        saveConflictBackup(pendingSnapshot)
+        setSyncState((current) => ({
+          ...current,
+          mode: 'pending',
+          message: 'Shared database changed. Local pending edits were kept on this laptop.',
+          pending: true,
+        }))
+        localStorage.setItem(PENDING_SYNC_KEY, 'true')
+        if (!options.quiet) {
+          notify(
+            'Sync conflict',
+            'Another admin saved first. Your pending edit was not uploaded; review latest data before saving again.',
+            'error',
           )
         }
         return

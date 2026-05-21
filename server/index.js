@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { clearReportCache, generateCachedReport, warmDefaultReport } from './report.js'
+import { createDashboardStorage } from './storage.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -18,6 +19,7 @@ const reportsDir = path.join(dataDir, 'generated-reports')
 const liveDbPath = path.join(dataDir, 'bsdi-db.json')
 const port = Number(process.env.PORT || 4174)
 const uploadLimit = Number(process.env.BSDI_MAX_UPLOAD_BYTES || 1024 * 1024 * 1024)
+const dashboardStorage = createDashboardStorage({ bundledDbPath, liveDbPath })
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -65,25 +67,8 @@ function extensionFor(file) {
   return ''
 }
 
-async function readJson(filePath) {
-  const raw = await fs.readFile(filePath, 'utf8')
-  return JSON.parse(raw)
-}
-
-async function writeJsonAtomic(filePath, data) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tempPath = `${filePath}.${Date.now()}.tmp`
-  await fs.writeFile(tempPath, JSON.stringify(data, null, 2))
-  // Atomic rename avoids half-written JSON if the process stops during save.
-  await fs.rename(tempPath, filePath)
-}
-
 async function readDashboardState() {
-  if (fsSync.existsSync(liveDbPath)) return readJson(liveDbPath)
-  // First boot seeds persistent storage from the bundled database.
-  const bundled = await readJson(bundledDbPath)
-  await writeJsonAtomic(liveDbPath, bundled)
-  return bundled
+  return dashboardStorage.readState()
 }
 
 function getPasswordFromState(state) {
@@ -154,6 +139,16 @@ function mergeDashboardState(current, next) {
   }
 }
 
+function expectedRevisionFromRequest(req, incoming) {
+  return (
+    req.get('x-bsdi-revision') ||
+    req.body?.baseRevision ||
+    incoming?._serverRevision ||
+    incoming?.database?._serverRevision ||
+    ''
+  )
+}
+
 app.get('/api/health', async (_req, res, next) => {
   try {
     const state = await readDashboardState()
@@ -162,6 +157,8 @@ app.get('/api/health', async (_req, res, next) => {
       database: state.databaseName || 'bsdi-completed-projects',
       updatedAt: state.updatedAt || state.generatedAt || null,
       dataDir,
+      storage: dashboardStorage.mode,
+      revision: state._serverRevision || null,
     })
   } catch (error) {
     next(error)
@@ -208,10 +205,15 @@ app.put('/api/state', async (req, res, next) => {
       return
     }
     const merged = mergeDashboardState(current, incoming)
-    await writeJsonAtomic(liveDbPath, merged)
+    const saved = await dashboardStorage.writeState(merged, expectedRevisionFromRequest(req, incoming))
     await clearReportCache(reportsDir)
-    warmDefaultReport({ data: merged, reportsDir, rootDir, dataDir })
-    res.json({ ok: true, updatedAt: merged.updatedAt, data: merged })
+    warmDefaultReport({ data: saved, reportsDir, rootDir, dataDir })
+    res.json({
+      ok: true,
+      updatedAt: saved.updatedAt,
+      revision: saved._serverRevision || null,
+      data: saved,
+    })
   } catch (error) {
     next(error)
   }
@@ -291,6 +293,7 @@ app.use((error, _req, res, next) => {
   const status = error.status || 500
   res.status(status).json({
     error: error.message || 'Server error',
+    code: error.code || undefined,
   })
 })
 

@@ -22,40 +22,61 @@ Admins can add or update:
 | Mode | Works offline | Shared edits | Use case |
 | --- | --- | --- | --- |
 | Static frontend | Yes, after loading once | No | Simple demo/view-only |
-| Node Web Service | Yes, after sync/cache | Yes | Real multi-user deployment |
+| Node Web Service + MySQL | Yes, after sync/cache | Yes | Real multi-user deployment |
 | Tauri desktop | Yes | Local unless connected to API | Offline desktop package |
 
 Use the Node Web Service mode for production.
 
 ## Shared Database
 
-The server keeps the active database at:
+Production should keep shared project data in MySQL. Set either the separate variables:
+
+```text
+DB_HOST=your-mysql-host
+DB_PORT=3306
+DB_NAME=your-database-name
+DB_USER=your-database-user
+DB_PASSWORD=your-database-password
+```
+
+or one connection string:
+
+```text
+DATABASE_URL=mysql://user:password@host:3306/database
+```
+
+The app creates and uses this table automatically:
+
+```text
+bsdi_dashboard_state
+```
+
+The server uses a revision number in that table. If two admins edit at the same time, a stale save is rejected with a sync-conflict message instead of overwriting another admin's work.
+
+If MySQL variables are not set, the server falls back to JSON storage:
 
 ```text
 BSDI_DATA_DIR/bsdi-db.json
 ```
 
-Generated report PDFs are cached at:
+Generated report PDFs and uploaded media still live in the data directory:
 
 ```text
 BSDI_DATA_DIR/generated-reports/
+BSDI_DATA_DIR/media/
 ```
 
-If `BSDI_DATA_DIR` is not set, local development uses:
+If `BSDI_DATA_DIR` is not set, local development uses `server-data/`. For Hostinger production, set `BSDI_DATA_DIR` to a writable folder outside redeployed app files, for example `../bsdi-data`.
 
-```text
-server-data/bsdi-db.json
-```
-
-On first start, the server seeds the active database from:
+On first start, MySQL or JSON fallback is seeded from:
 
 ```text
 public/database/bsdi-db.json
 ```
 
-After that, the persistent server database becomes the source for online users.
+After that, MySQL becomes the source of truth for online users. GitHub redeploys update code only; they do not overwrite the MySQL row.
 
-For Hostinger production, set `BSDI_DATA_DIR` to a writable persistent folder outside the redeployed app files. If the frontend is hosted separately from the Node API, build the frontend with `VITE_BSDI_API_BASE_URL` set to the Node API domain.
+If the frontend is hosted separately from the Node API, build the frontend with `VITE_BSDI_API_BASE_URL` set to the Node API domain.
 
 When an online save succeeds, old PDF files are deleted and the default `Total / All Districts` report starts rebuilding. Filter-specific PDFs rebuild on demand when opened.
 
@@ -64,14 +85,14 @@ When an online save succeeds, old PDF files are deleted and the default `Total /
 Before major edits or redeploys, back up:
 
 ```text
-BSDI_DATA_DIR/bsdi-db.json
+MySQL database/table bsdi_dashboard_state
 BSDI_DATA_DIR/media/
 ```
 
 Recommended naming:
 
 ```text
-bsdi-db-YYYY-MM-DD.json
+bsdi-mysql-YYYY-MM-DD.sql
 media-YYYY-MM-DD.zip
 ```
 
@@ -93,6 +114,7 @@ media-YYYY-MM-DD.zip
 5. Watch the toast message:
    - `Synced online` means the shared DB was updated.
    - `Saved locally` means the update is waiting on that laptop.
+   - `Sync conflict` means another admin saved first; sync latest and re-save after review.
 6. Press Sync when internet/server access is available.
 
 ## Sync States
@@ -101,6 +123,7 @@ media-YYYY-MM-DD.zip
 | --- | --- | --- |
 | `Synced` | Shared DB loaded | No action |
 | `Pending sync` | Local edits need upload | Press Sync when online |
+| `Sync conflict` | Another admin saved first | Sync latest, review, then save again |
 
 The Sync button stays visible. The Online/Offline pill shows internet status separately. The old local-cache label is intentionally hidden because the cache is an internal offline feature, not a user workflow.
 
@@ -119,15 +142,21 @@ Start: npm run start
 
 ### Data resets after redeploy
 
-The server is writing to temporary storage.
+The server is not connected to MySQL and is writing JSON data to temporary storage.
 
-Fix: set `BSDI_DATA_DIR` to a persistent disk/folder.
+Fix: configure `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. Keep `BSDI_DATA_DIR` persistent for uploads and generated PDFs.
 
 ### Admin password differs after deploy
 
-The live server DB may already exist and may not match `public/database/bsdi-db.json`.
+The live MySQL row may already exist and may not match `public/database/bsdi-db.json`.
 
-Fix: check the server's active `BSDI_DATA_DIR/bsdi-db.json`.
+Fix: check `settings.adminPassword` in `bsdi_dashboard_state`. If MySQL is not configured, check `BSDI_DATA_DIR/bsdi-db.json`.
+
+### Sync conflict appears
+
+Another admin saved changes after this laptop loaded data.
+
+Fix: press Sync to load the latest shared data, review the local change, then save again. This protection keeps users from silently overwriting each other.
 
 ### Uploaded media is missing
 
@@ -146,9 +175,10 @@ Fix: hard refresh, clear site data, or reinstall the PWA.
 For smooth use with many users:
 
 - Node.js/Express support
-- Persistent disk/storage
+- MySQL database for shared records
+- Persistent disk/storage for uploads and generated PDFs
 - At least 20 GB storage for current growth plans
 - HTTPS enabled
 - Build support for Git LFS, or deploy from a local folder after `git lfs pull`
 
-If persistent file storage is uncertain, use an external database such as MySQL/Supabase and cloud storage for uploads.
+If persistent file storage is uncertain, keep project records in MySQL and move uploaded media to a persistent disk or cloud storage before heavy production use.
