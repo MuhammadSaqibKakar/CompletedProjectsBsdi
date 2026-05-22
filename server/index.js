@@ -162,6 +162,15 @@ function reportWarmKey(filters = {}) {
   return reportFileName(filters)
 }
 
+function reportIsStale(status, state) {
+  const dataTime = Date.parse(state?.updatedAt || state?.generatedAt || '')
+  if (!Number.isFinite(dataTime)) return false
+  if (!status.ready || !status.readyAt) return true
+  const reportTime = Date.parse(status.readyAt)
+  if (!Number.isFinite(reportTime)) return true
+  return reportTime + 1000 < dataTime
+}
+
 async function runReportWarmup(key) {
   warmingReports.add(key)
   try {
@@ -177,6 +186,7 @@ async function runReportWarmup(key) {
         rootDir,
         dataDir,
         filters: request.filters,
+        force: request.force,
       })
     }
   } catch (error) {
@@ -232,15 +242,18 @@ app.get('/api/state', async (_req, res, next) => {
 app.get('/api/report/pdf', async (req, res, next) => {
   try {
     const state = await readDashboardState()
+    const filters = {
+      phase: req.query.phase || 'Total',
+      district: req.query.district || 'All Districts',
+    }
+    const status = await getReportStatus({ reportsDir, filters })
     const reportPath = await generateCachedReport({
       data: state,
       reportsDir,
       rootDir,
       dataDir,
-      filters: {
-        phase: req.query.phase || 'Total',
-        district: req.query.district || 'All Districts',
-      },
+      filters,
+      force: reportIsStale(status, state),
     })
     res.set('Cache-Control', 'no-store')
     res.type('application/pdf')
@@ -252,13 +265,19 @@ app.get('/api/report/pdf', async (req, res, next) => {
 
 app.get('/api/report/status', async (req, res, next) => {
   try {
+    const state = await readDashboardState()
     const filters = reportFiltersFromRequest(req)
     const status = await getReportStatus({ reportsDir, filters })
+    const stale = reportIsStale(status, state)
+    if ((stale || !status.ready) && !isReportPreparing(filters)) {
+      warmReportInBackground(state, filters, { force: stale })
+    }
     res.set('Cache-Control', 'no-store')
     res.json({
       ok: true,
       ...filters,
       ...status,
+      stale,
       warming: isReportPreparing(filters),
     })
   } catch (error) {
@@ -270,14 +289,17 @@ app.post('/api/report/warm', async (req, res, next) => {
   try {
     const state = await readDashboardState()
     const filters = reportFiltersFromRequest(req)
-    warmReportInBackground(state, filters)
     const status = await getReportStatus({ reportsDir, filters })
+    const stale = reportIsStale(status, state)
+    const force = stale || req.query.force === 'true' || req.body?.force === true
+    warmReportInBackground(state, filters, { force })
     res.set('Cache-Control', 'no-store')
     res.status(status.ready ? 200 : 202).json({
       ok: true,
       ...filters,
       ...status,
-      warming: isReportPreparing(filters) || !status.ready,
+      stale,
+      warming: isReportPreparing(filters) || !status.ready || stale,
     })
   } catch (error) {
     next(error)
@@ -389,6 +411,10 @@ app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
   readDashboardState()
-    .then((state) => warmReportInBackground(state, { phase: 'Total', district: 'All Districts' }))
+    .then(async (state) => {
+      const filters = { phase: 'Total', district: 'All Districts' }
+      const status = await getReportStatus({ reportsDir, filters })
+      warmReportInBackground(state, filters, { force: reportIsStale(status, state) })
+    })
     .catch((error) => console.warn(`Initial report warmup skipped: ${error.message}`))
 })

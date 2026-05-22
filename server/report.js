@@ -612,13 +612,13 @@ async function renderProjectPage(doc, rootDir, dataDir, reportsDir, project, ind
   drawBadge(doc, footer, 52, 542)
 }
 
-export async function generateCachedReport({ data, reportsDir, rootDir, dataDir, filters = {} }) {
+export async function generateCachedReport({ data, reportsDir, rootDir, dataDir, filters = {}, force = false }) {
   const phase = filters.phase || REPORT_TOTAL_PHASE
   const district = filters.district || REPORT_ALL_DISTRICTS
   await fs.mkdir(reportsDir, { recursive: true })
   const fileName = reportFileName({ phase, district })
   const reportPath = path.join(reportsDir, fileName)
-  if (fsSync.existsSync(reportPath)) return reportPath
+  if (!force && fsSync.existsSync(reportPath)) return reportPath
 
   const projects = filterProjects(data, { phase, district })
   const divisions = sectionData(projects)
@@ -653,6 +653,7 @@ export async function generateCachedReport({ data, reportsDir, rootDir, dataDir,
     stream.on('finish', resolve)
     stream.on('error', reject)
   })
+  if (force) await fs.rm(reportPath, { force: true })
   await fs.rename(tempPath, reportPath)
   return reportPath
 }
