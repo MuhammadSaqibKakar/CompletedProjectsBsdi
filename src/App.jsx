@@ -45,6 +45,7 @@ const CONFLICT_BACKUP_KEY_PREFIX = 'bsdi-dashboard-conflict-backup-'
 const LEGACY_PROJECT_KEYS = ['bsdi-dashboard-projects-v6', 'bsdi-dashboard-projects-v5']
 const MEDIA_DB_NAME = 'bsdi-dashboard-media'
 const MEDIA_STORE_NAME = 'files'
+const MEDIA_CACHE_NAME = 'bsdi-media'
 const API_BASE_URL = (import.meta.env.VITE_BSDI_API_BASE_URL || '').replace(/\/+$/, '')
 const API_STATE_ENDPOINT = `${API_BASE_URL}/api/state`
 const API_MEDIA_ENDPOINT = `${API_BASE_URL}/api/media`
@@ -687,6 +688,69 @@ function saveConflictBackup(snapshot) {
   } catch {
     return ''
   }
+}
+
+function collectCacheableMediaUrls(projects = []) {
+  if (typeof window === 'undefined') return []
+  const urls = new Set()
+  for (const project of projects) {
+    for (const item of project.media || []) {
+      const src = item?.src || ''
+      if (!src || src.startsWith('blob:') || src.startsWith('data:')) continue
+      try {
+        const url = new URL(src, window.location.origin)
+        if (!/^https?:$/.test(url.protocol)) continue
+        urls.add(url.href)
+      } catch {
+        // Ignore hand-entered invalid links; project data still syncs.
+      }
+    }
+  }
+  return [...urls]
+}
+
+async function cacheDashboardMedia(projects = [], onProgress = () => {}) {
+  if (typeof window === 'undefined' || !('caches' in window)) {
+    return { total: 0, ready: 0, failed: 0, unsupported: true }
+  }
+
+  const urls = collectCacheableMediaUrls(projects)
+  if (!urls.length) return { total: 0, ready: 0, failed: 0, unsupported: false }
+
+  try {
+    await navigator.storage?.persist?.()
+  } catch {
+    // Best effort only; some browsers do not expose storage persistence.
+  }
+
+  const cache = await caches.open(MEDIA_CACHE_NAME)
+  let ready = 0
+  let failed = 0
+
+  for (const [index, url] of urls.entries()) {
+    try {
+      const cached = await cache.match(url)
+      if (!cached) {
+        const parsed = new URL(url)
+        const request = new Request(url, {
+          credentials: parsed.origin === window.location.origin ? 'same-origin' : 'omit',
+        })
+        const response = await fetch(request)
+        if (!response.ok && response.type !== 'opaque') throw new Error(`${response.status}`)
+        await cache.put(request, response.clone())
+      }
+      ready += 1
+    } catch {
+      failed += 1
+    }
+
+    const done = index + 1
+    if (done === 1 || done === urls.length || done % 10 === 0) {
+      onProgress({ done, total: urls.length, ready, failed })
+    }
+  }
+
+  return { total: urls.length, ready, failed, unsupported: false }
 }
 
 async function fetchJsonFromApi(url, options = {}) {
@@ -3883,16 +3947,38 @@ export default function App() {
       setSelectedId(hydratedProjects[0]?.id || '')
       persistState(hydratedProjects, remoteDataset.phases, remoteDataset.divisions, remoteDataset)
 
+      setSyncState((current) => ({
+        ...current,
+        mode: 'live',
+        message: 'Latest data loaded. Caching project media for offline use...',
+        pending: false,
+      }))
+      const mediaCache = await cacheDashboardMedia(hydratedProjects, ({ done, total, ready, failed }) => {
+        setSyncState((current) => ({
+          ...current,
+          mode: 'live',
+          message: `Caching offline media ${done}/${total} (${ready} ready${failed ? `, ${failed} skipped` : ''})`,
+          pending: false,
+        }))
+      })
+
       const syncedAt = new Date().toISOString()
       localStorage.removeItem(PENDING_SYNC_KEY)
       localStorage.setItem(LAST_SYNC_KEY, syncedAt)
+      const syncMessage = mediaCache.unsupported
+        ? 'Latest data loaded. This browser does not support offline media caching.'
+        : mediaCache.total
+          ? `${mediaCache.ready}/${mediaCache.total} media files ready offline${mediaCache.failed ? `; ${mediaCache.failed} skipped` : ''}.`
+          : 'Latest data loaded. No media files found to cache.'
       setSyncState({
         mode: 'live',
-        message: 'Latest shared data loaded',
+        message: syncMessage,
         lastSyncedAt: syncedAt,
         pending: false,
       })
-      if (!options.quiet) notify('Sync complete', 'This laptop now has the latest shared data.', 'success')
+      if (!options.quiet) {
+        notify('Sync complete', syncMessage, mediaCache.failed || mediaCache.unsupported ? 'info' : 'success')
+      }
     } catch (error) {
       if (isApiUnavailableError(error)) {
         setSyncAvailable(false)
