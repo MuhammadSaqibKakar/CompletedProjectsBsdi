@@ -140,8 +140,30 @@ function summarizeProjects(projects) {
   }
 }
 
-function reportFileName(filters = {}) {
+export function reportFileName(filters = {}) {
   return `bsdi-report-${sanitizePathPart(filters.phase || REPORT_TOTAL_PHASE)}-${sanitizePathPart(filters.district || REPORT_ALL_DISTRICTS)}.pdf`
+}
+
+export async function getReportStatus({ reportsDir, filters = {} }) {
+  await fs.mkdir(reportsDir, { recursive: true })
+  const fileName = reportFileName(filters)
+  const reportPath = path.join(reportsDir, fileName)
+  try {
+    const stat = await fs.stat(reportPath)
+    return {
+      ready: true,
+      fileName,
+      readyAt: stat.mtime.toISOString(),
+      size: stat.size,
+    }
+  } catch {
+    return {
+      ready: false,
+      fileName,
+      readyAt: '',
+      size: 0,
+    }
+  }
 }
 
 export async function clearReportCache(reportsDir) {
