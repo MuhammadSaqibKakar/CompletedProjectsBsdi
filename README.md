@@ -51,7 +51,7 @@ The bundled database is stored at `public/database/bsdi-db.json`.
 - Toast notifications for save, delete, upload, lock/unlock, sync, and error states.
 - Offline local cache for meeting mode.
 - Shared sync API for multi-laptop online edits.
-- Server-generated PDF report cache: the Print button opens `/api/report/pdf` when the Node API is available.
+- Print-ready report layout for browser printing, plus server-side cached PDF regeneration after online saves.
 - Render/Hostinger-compatible Node deployment path.
 
 ## Project Structure
@@ -149,14 +149,16 @@ The app has four data layers:
 | Bundled DB | Ships with the app at `public/database/bsdi-db.json` |
 | Browser cache | Keeps last loaded data for offline meeting mode |
 | Production DB | Stores shared online edits in MySQL table `bsdi_dashboard_state` |
-| JSON fallback | Stores shared online edits in `BSDI_DATA_DIR/bsdi-db.json` when MySQL env vars are not set |
+| JSON fallback | Local/dev fallback at `BSDI_DATA_DIR/bsdi-db.json` when MySQL env vars are not set |
 | Server report cache | Stores generated PDFs in `BSDI_DATA_DIR/generated-reports/` |
 
 Admin edits save locally first. If the shared Node API is available, the app pushes the updated database to `/api/state`. If the user is offline or the deployment is frontend-only, edits stay on that laptop as pending local changes.
 
 The server uses a revision number to stop silent overwrites. If two admins edit at the same time, the second stale save is rejected with a sync conflict so the user can sync latest data and save again.
 
-After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report. Filtered reports are generated on demand and then cached.
+For production, set `BSDI_REQUIRE_MYSQL=true`. With that guard enabled, online saves and media uploads are blocked unless MySQL is connected, so new website data cannot silently go into a temporary JSON file.
+
+After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report in the background. Project records remain in MySQL; uploaded media and generated PDF files remain in persistent `BSDI_DATA_DIR`.
 
 For split frontend/backend hosting, build the frontend with `VITE_BSDI_API_BASE_URL=https://your-node-api-domain` so `/api/state`, `/api/media`, and synced uploaded media resolve to the separate Node service. For a single Hostinger Node app, leave it unset.
 
@@ -223,15 +225,28 @@ DB_NAME=your-database-name
 DB_USER=your-database-user
 DB_PASSWORD=your-database-password
 BSDI_DATA_DIR=../bsdi-data
+BSDI_REQUIRE_MYSQL=true
 ```
 
-`DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` keep the live project records in MySQL, so GitHub redeploys do not overwrite user-entered data. `BSDI_DATA_DIR` is still needed for uploaded media and generated PDF reports; keep it outside redeployed app files.
+`DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` keep the live project records in MySQL, so GitHub redeploys do not overwrite user-entered data. `BSDI_REQUIRE_MYSQL=true` makes production writes fail safely if the database is not connected. `BSDI_DATA_DIR` is still needed for uploaded media and generated PDF reports; keep it outside redeployed app files.
 
 If your host gives one connection string instead of separate fields, use:
 
 ```text
 DATABASE_URL=mysql://user:password@host:3306/database
 BSDI_DATA_DIR=../bsdi-data
+BSDI_REQUIRE_MYSQL=true
+```
+
+After deployment, open `/api/health`. A healthy production setup should show:
+
+```json
+{
+  "ok": true,
+  "storage": "mysql",
+  "mysqlRequired": true,
+  "durableWrites": true
+}
 ```
 
 ## Git LFS
@@ -291,7 +306,7 @@ Fix: check the MySQL row in `bsdi_dashboard_state`, or the JSON fallback at `BSD
 
 Cause: the app is running without MySQL and the server data directory is not persistent.
 
-Fix: configure the MySQL environment variables for production. Also keep `BSDI_DATA_DIR` persistent for uploads/reports.
+Fix: configure the MySQL environment variables for production and set `BSDI_REQUIRE_MYSQL=true`. Also keep `BSDI_DATA_DIR` persistent for uploads/reports.
 
 ### Sync conflict appears
 

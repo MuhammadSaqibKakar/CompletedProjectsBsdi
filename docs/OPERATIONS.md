@@ -37,6 +37,7 @@ DB_PORT=3306
 DB_NAME=your-database-name
 DB_USER=your-database-user
 DB_PASSWORD=your-database-password
+BSDI_REQUIRE_MYSQL=true
 ```
 
 or one connection string:
@@ -59,6 +60,18 @@ If MySQL variables are not set, the server falls back to JSON storage:
 BSDI_DATA_DIR/bsdi-db.json
 ```
 
+For production, keep `BSDI_REQUIRE_MYSQL=true`. With that guard enabled, online saves and media uploads are blocked if MySQL is not connected, so new website data cannot silently fall back to JSON storage.
+
+After deployment, confirm `/api/health` shows:
+
+```json
+{
+  "storage": "mysql",
+  "mysqlRequired": true,
+  "durableWrites": true
+}
+```
+
 Generated report PDFs and uploaded media still live in the data directory:
 
 ```text
@@ -78,7 +91,7 @@ After that, MySQL becomes the source of truth for online users. GitHub redeploys
 
 If the frontend is hosted separately from the Node API, build the frontend with `VITE_BSDI_API_BASE_URL` set to the Node API domain.
 
-When an online save succeeds, old PDF files are deleted and the default `Total / All Districts` report starts rebuilding. Filter-specific PDFs rebuild on demand when opened.
+When an online save succeeds, old generated PDF files are deleted and the default `Total / All Districts` report starts rebuilding in the background. The PDF file is stored in persistent `BSDI_DATA_DIR/generated-reports/`; project records remain in MySQL.
 
 ## Backup Routine
 

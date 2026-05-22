@@ -5,7 +5,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
-import { generateCachedReport } from './report.js'
+import { clearReportCache, generateCachedReport } from './report.js'
 import { createDashboardStorage } from './storage.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -20,6 +20,11 @@ const liveDbPath = path.join(dataDir, 'bsdi-db.json')
 const port = Number(process.env.PORT || 4174)
 const uploadLimit = Number(process.env.BSDI_MAX_UPLOAD_BYTES || 1024 * 1024 * 1024)
 const dashboardStorage = createDashboardStorage({ bundledDbPath, liveDbPath })
+const requireMysqlStorage =
+  /^(1|true|required)$/i.test(process.env.BSDI_REQUIRE_MYSQL || '') ||
+  (process.env.NODE_ENV === 'production' && process.env.BSDI_ALLOW_JSON_WRITES !== 'true')
+let defaultReportJob = Promise.resolve()
+let queuedDefaultReportData = null
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -69,6 +74,14 @@ function extensionFor(file) {
 
 async function readDashboardState() {
   return dashboardStorage.readState()
+}
+
+function assertDurableWriteStorage() {
+  if (!requireMysqlStorage || dashboardStorage.mode === 'mysql') return
+  const error = new Error('MySQL database is required for production writes. Configure DB_HOST, DB_NAME, DB_USER, and DB_PASSWORD before saving.')
+  error.status = 503
+  error.code = 'MYSQL_REQUIRED'
+  throw error
 }
 
 function getPasswordFromState(state) {
@@ -149,6 +162,35 @@ function expectedRevisionFromRequest(req, incoming) {
   )
 }
 
+async function rebuildDefaultReport(data) {
+  await clearReportCache(reportsDir)
+  await generateCachedReport({
+    data,
+    reportsDir,
+    rootDir,
+    dataDir,
+    filters: { phase: 'Total', district: 'All Districts' },
+    force: true,
+  })
+}
+
+function queueDefaultReportRebuild(data) {
+  queuedDefaultReportData = data
+  defaultReportJob = defaultReportJob
+    .catch(() => undefined)
+    .then(async () => {
+      while (queuedDefaultReportData) {
+        const nextData = queuedDefaultReportData
+        queuedDefaultReportData = null
+        await rebuildDefaultReport(nextData)
+      }
+    })
+    .catch((error) => {
+      console.warn(`Default report rebuild failed: ${error.message}`)
+    })
+  return defaultReportJob
+}
+
 app.get('/api/health', async (_req, res, next) => {
   try {
     const state = await readDashboardState()
@@ -158,6 +200,8 @@ app.get('/api/health', async (_req, res, next) => {
       updatedAt: state.updatedAt || state.generatedAt || null,
       dataDir,
       storage: dashboardStorage.mode,
+      mysqlRequired: requireMysqlStorage,
+      durableWrites: dashboardStorage.mode === 'mysql' || !requireMysqlStorage,
       revision: state._serverRevision || null,
     })
   } catch (error) {
@@ -200,6 +244,7 @@ app.get('/api/report/pdf', async (req, res, next) => {
 
 app.put('/api/state', async (req, res, next) => {
   try {
+    assertDurableWriteStorage()
     const current = await assertAdminPassword(req)
     const incoming = req.body?.data || req.body
     if (!incoming || !Array.isArray(incoming.projects)) {
@@ -208,6 +253,7 @@ app.put('/api/state', async (req, res, next) => {
     }
     const merged = mergeDashboardState(current, incoming)
     const saved = await dashboardStorage.writeState(merged, expectedRevisionFromRequest(req, incoming))
+    queueDefaultReportRebuild(saved)
     res.json({
       ok: true,
       updatedAt: saved.updatedAt,
@@ -221,6 +267,7 @@ app.put('/api/state', async (req, res, next) => {
 
 app.post('/api/media', upload.array('files', 200), async (req, res, next) => {
   try {
+    assertDurableWriteStorage()
     await assertAdminPassword(req)
 
     // Store uploaded media by stable project ID so records can move in the DB
