@@ -50,6 +50,7 @@ const API_BASE_URL = (import.meta.env.VITE_BSDI_API_BASE_URL || '').replace(/\/+
 const API_STATE_ENDPOINT = `${API_BASE_URL}/api/state`
 const API_MEDIA_ENDPOINT = `${API_BASE_URL}/api/media`
 const API_REPORT_ENDPOINT = `${API_BASE_URL}/api/report/pdf`
+const API_REPORT_STATUS_ENDPOINT = `${API_BASE_URL}/api/report/status`
 const API_UNAVAILABLE_MESSAGE = 'Shared sync server is not enabled on this deployment'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
 const BALOCHISTAN_MAP = '/brand/balochistan-district-map-print.jpg'
@@ -217,6 +218,15 @@ function reportDownloadUrl() {
     t: String(Date.now()),
   })
   return `${API_REPORT_ENDPOINT}?${params.toString()}`
+}
+
+function reportStatusUrl() {
+  const params = new URLSearchParams({
+    phase: 'Total',
+    district: DISTRICT_FILTER_ALL,
+    t: String(Date.now()),
+  })
+  return `${API_REPORT_STATUS_ENDPOINT}?${params.toString()}`
 }
 
 function cleanPhaseCatalog(phases = [], projects = []) {
@@ -3529,6 +3539,7 @@ export default function App() {
   const [printReportReady, setPrintReportReady] = useState(false)
   const [printRequested, setPrintRequested] = useState(false)
   const [printBusy, setPrintBusy] = useState(false)
+  const [latestSavedReportTime, setLatestSavedReportTime] = useState('')
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -3543,6 +3554,15 @@ export default function App() {
     setNotifications((current) => current.filter((item) => item.id !== id))
   }, [])
 
+  const refreshReportStatus = useCallback(async () => {
+    try {
+      const status = await fetchJsonFromApi(reportStatusUrl())
+      setLatestSavedReportTime(status.readyTime || '')
+    } catch {
+      setLatestSavedReportTime('')
+    }
+  }, [])
+
   useEffect(() => {
     const refreshPakistanTime = () => {
       setPakistanDisplayDate(getPakistanDisplayDate())
@@ -3552,6 +3572,12 @@ export default function App() {
     const timer = window.setInterval(refreshPakistanTime, 30 * 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    refreshReportStatus()
+    const timer = window.setInterval(refreshReportStatus, 15 * 1000)
+    return () => window.clearInterval(timer)
+  }, [refreshReportStatus])
 
   useEffect(() => {
     if (!printReportReady) return undefined
@@ -4453,7 +4479,7 @@ export default function App() {
               )
             })}
           </nav>
-          <div className="flex sm:items-center">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={printAllProjects}
@@ -4464,6 +4490,14 @@ export default function App() {
               {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}
               {printBusy ? 'Preparing' : 'Print'}
             </button>
+            {latestSavedReportTime ? (
+              <span
+                className="min-w-[72px] text-right text-xs font-bold tabular-nums text-slate-400"
+                title="Latest saved PDF time"
+              >
+                {latestSavedReportTime}
+              </span>
+            ) : null}
           </div>
         </div>
 

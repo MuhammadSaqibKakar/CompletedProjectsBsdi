@@ -5,7 +5,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
-import { clearReportCache, generateCachedReport } from './report.js'
+import { clearReportCache, generateCachedReport, getReportStatus } from './report.js'
 import { createDashboardStorage } from './storage.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -25,6 +25,7 @@ const requireMysqlStorage =
   (process.env.NODE_ENV === 'production' && process.env.BSDI_ALLOW_JSON_WRITES !== 'true')
 let defaultReportJob = Promise.resolve()
 let queuedDefaultReportData = null
+let defaultReportBuilding = false
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -182,21 +183,39 @@ function pakistanFileStamp(date = new Date()) {
   return `${parts.day} ${parts.month} ${parts.year} - ${hour}${parts.minute} PKT`
 }
 
+function pakistanTimeOnly(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  )
+  const hour = parts.hour === '24' ? '00' : parts.hour
+  return `${hour}:${parts.minute}`
+}
+
 async function reportDownloadName(reportPath) {
   const stat = await fs.stat(reportPath)
   return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pdf`
 }
 
 async function rebuildDefaultReport(data) {
-  await clearReportCache(reportsDir)
-  await generateCachedReport({
-    data,
-    reportsDir,
-    rootDir,
-    dataDir,
-    filters: { phase: 'Total', district: 'All Districts' },
-    force: true,
-  })
+  defaultReportBuilding = true
+  try {
+    await clearReportCache(reportsDir)
+    await generateCachedReport({
+      data,
+      reportsDir,
+      rootDir,
+      dataDir,
+      filters: { phase: 'Total', district: 'All Districts' },
+      force: true,
+    })
+  } finally {
+    defaultReportBuilding = false
+  }
 }
 
 function queueDefaultReportRebuild(data) {
@@ -265,6 +284,24 @@ app.get('/api/report/pdf', async (req, res, next) => {
     })
     res.set('Cache-Control', 'no-store')
     res.download(reportPath, await reportDownloadName(reportPath))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/report/status', async (req, res, next) => {
+  try {
+    const filters = {
+      phase: req.query.phase || 'Total',
+      district: req.query.district || 'All Districts',
+    }
+    const status = await getReportStatus({ reportsDir, filters })
+    res.set('Cache-Control', 'no-store')
+    res.json({
+      ...status,
+      building: isDefaultReportFilter(filters) ? defaultReportBuilding || Boolean(queuedDefaultReportData) : false,
+      readyTime: status.readyAt ? pakistanTimeOnly(new Date(status.readyAt)) : '',
+    })
   } catch (error) {
     next(error)
   }
