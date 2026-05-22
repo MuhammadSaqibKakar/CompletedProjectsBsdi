@@ -3847,7 +3847,7 @@ export default function App() {
       }
 
       try {
-        const result = await fetchJsonFromApi(`${API_REPORT_STATUS_ENDPOINT}?${reportQueryString()}`)
+        const result = await fetchJsonFromApi(`${API_REPORT_STATUS_ENDPOINT}?${reportQueryString()}&_=${Date.now()}`)
         setPdfStatus(result)
         return result
       } catch (error) {
@@ -3868,7 +3868,11 @@ export default function App() {
         const result = await fetchJsonFromApi(API_REPORT_WARM_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phase: phaseSelection, district: districtSelection }),
+          body: JSON.stringify({
+            phase: phaseSelection,
+            district: districtSelection,
+            force: options.force === true,
+          }),
         })
         setPdfStatus(result)
         return result
@@ -3926,7 +3930,7 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data))
       setBaseData(normalizeDataset(result.data))
     }
-    void warmCurrentPdf({ quiet: true })
+    void warmCurrentPdf({ quiet: true, force: true })
     return result.data
   }
 
@@ -4311,7 +4315,7 @@ export default function App() {
     ? 'Upload pending edits, then load the latest shared database'
     : 'Sync with the shared database when the Node server is available'
   const pdfStatusLabel =
-    pdfStatusBusy || pdfStatus.warming
+    pdfStatusBusy || pdfStatus.warming || pdfStatus.stale
       ? 'PDF preparing...'
       : pdfStatus.readyAt
         ? `Last PDF: ${formatPakistanTimestamp(pdfStatus.readyAt)}`
