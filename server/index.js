@@ -187,17 +187,6 @@ function reportDownloadName() {
   return `Bsdi completed projects ${pakistanFileStamp()}.pdf`
 }
 
-async function ensureDefaultReport(data) {
-  await generateCachedReport({
-    data,
-    reportsDir,
-    rootDir,
-    dataDir,
-    filters: { phase: 'Total', district: 'All Districts' },
-    force: false,
-  })
-}
-
 async function rebuildDefaultReport(data) {
   await clearReportCache(reportsDir)
   await generateCachedReport({
@@ -223,16 +212,6 @@ function queueDefaultReportRebuild(data) {
     })
     .catch((error) => {
       console.warn(`Default report rebuild failed: ${error.message}`)
-    })
-  return defaultReportJob
-}
-
-function queueDefaultReportWarmup(data) {
-  defaultReportJob = defaultReportJob
-    .catch(() => undefined)
-    .then(() => ensureDefaultReport(data))
-    .catch((error) => {
-      console.warn(`Default report warmup failed: ${error.message}`)
     })
   return defaultReportJob
 }
@@ -397,8 +376,8 @@ app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
   readDashboardState()
-    .then((state) => queueDefaultReportWarmup(state))
+    .then((state) => queueDefaultReportRebuild(state))
     .catch((error) => {
-      console.warn(`Default report startup warmup skipped: ${error.message}`)
+      console.warn(`Default report startup rebuild skipped: ${error.message}`)
     })
 })

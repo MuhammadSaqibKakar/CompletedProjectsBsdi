@@ -216,33 +216,52 @@ async function optimizeReportImage(filePath, reportsDir) {
   }
 }
 
-function drawSafeImage(doc, filePath, x, y, width, height, options = {}) {
+function drawImageInFrame(doc, filePath, x, y, width, height, options = {}) {
   if (!canUseImage(filePath)) return false
+  const {
+    mode = 'cover',
+    radius = 0,
+    padding = 0,
+    background = '',
+    stroke = '',
+  } = options
+  if (background) doc.roundedRect(x, y, width, height, radius).fill(background)
+  const imageX = x + padding
+  const imageY = y + padding
+  const imageWidth = Math.max(1, width - padding * 2)
+  const imageHeight = Math.max(1, height - padding * 2)
+  let saved = false
   try {
-    doc.image(filePath, x, y, {
-      cover: [width, height],
+    doc.save()
+    saved = true
+    if (radius) doc.roundedRect(x, y, width, height, radius).clip()
+    else doc.rect(x, y, width, height).clip()
+    doc.image(filePath, imageX, imageY, {
+      [mode === 'contain' ? 'fit' : 'cover']: [imageWidth, imageHeight],
       align: 'center',
       valign: 'center',
-      ...options,
     })
+    doc.restore()
+    if (stroke) doc.roundedRect(x, y, width, height, radius).stroke(stroke)
     return true
   } catch {
+    if (saved) doc.restore()
+    if (stroke) doc.roundedRect(x, y, width, height, radius).stroke(stroke)
     return false
   }
 }
 
+function drawSafeImage(doc, filePath, x, y, width, height, options = {}) {
+  return drawImageInFrame(doc, filePath, x, y, width, height, {
+    mode: 'cover',
+    ...options,
+  })
+}
+
 function drawContainImage(doc, filePath, x, y, width, height) {
-  if (!canUseImage(filePath)) return false
-  try {
-    doc.image(filePath, x, y, {
-      fit: [width, height],
-      align: 'center',
-      valign: 'center',
-    })
-    return true
-  } catch {
-    return false
-  }
+  return drawImageInFrame(doc, filePath, x, y, width, height, {
+    mode: 'contain',
+  })
 }
 
 function roundedFill(doc, x, y, width, height, radius, fill, stroke = '') {
@@ -318,17 +337,27 @@ function drawLandmarks(doc, rootDir, x, y, width, height, dark = false) {
 
 function drawStatCard(doc, label, value, x, y, width, height, dark = false) {
   roundedFill(doc, x, y, width, height, 10, dark ? '#236558' : '#ffffff', dark ? '#6ee7b7' : border)
+  const valueText = String(value || '-')
+  let valueSize = 17
+  while (
+    valueSize > 8 &&
+    doc.font('Helvetica-Bold').fontSize(valueSize).widthOfString(valueText) > width - 24
+  ) {
+    valueSize -= 1
+  }
   drawText(doc, label.toUpperCase(), x + 12, y + 10, {
     size: 7,
     color: dark ? '#d1fae5' : green,
     font: 'Helvetica-Bold',
     width: width - 24,
   })
-  drawText(doc, value, x + 12, y + 27, {
-    size: 17,
+  drawText(doc, valueText, x + 12, y + 27, {
+    size: valueSize,
     color: dark ? '#ffffff' : slate,
     font: 'Helvetica-Bold',
     width: width - 24,
+    height: Math.max(10, height - 29),
+    lineGap: 0,
   })
 }
 
@@ -525,8 +554,8 @@ function imageBoxes(count, x, y, width, height) {
   const gap = 8
   if (count <= 1) return [{ x, y, width, height }]
   if (count === 2) return [
-    { x, y, width: (width - gap) / 2, height },
-    { x: x + (width + gap) / 2, y, width: (width - gap) / 2, height },
+    { x, y, width: width * 0.58 - gap / 2, height },
+    { x: x + width * 0.58 + gap / 2, y, width: width * 0.42 - gap / 2, height },
   ]
   if (count === 3) {
     const bigW = width * 0.58
@@ -534,6 +563,18 @@ function imageBoxes(count, x, y, width, height) {
       { x, y, width: bigW - gap / 2, height },
       { x: x + bigW + gap / 2, y, width: width - bigW - gap / 2, height: (height - gap) / 2 },
       { x: x + bigW + gap / 2, y: y + (height + gap) / 2, width: width - bigW - gap / 2, height: (height - gap) / 2 },
+    ]
+  }
+  if (count === 4) {
+    const bigW = width * 0.46
+    const sideX = x + bigW + gap
+    const sideW = width - bigW - gap
+    const topH = (height - gap) * 0.52
+    return [
+      { x, y, width: bigW, height },
+      { x: sideX, y, width: (sideW - gap) / 2, height: topH },
+      { x: sideX + (sideW + gap) / 2, y, width: (sideW - gap) / 2, height: topH },
+      { x: sideX, y: y + topH + gap, width: sideW, height: height - topH - gap },
     ]
   }
   const bigW = width * 0.45
@@ -602,9 +643,13 @@ async function renderProjectPage(doc, rootDir, dataDir, reportsDir, project, ind
     const boxes = imageBoxes(reportImages.length, 52, imageY, 746, imageH)
     reportImages.forEach((filePath, i) => {
       const box = boxes[i]
-      doc.roundedRect(box.x, box.y, box.width, box.height, 12).fill('#f8fafc')
-      drawSafeImage(doc, filePath, box.x, box.y, box.width, box.height)
-      doc.roundedRect(box.x, box.y, box.width, box.height, 12).stroke('#d1fae5')
+      drawImageInFrame(doc, filePath, box.x, box.y, box.width, box.height, {
+        mode: 'cover',
+        radius: 12,
+        background: '#f8fafc',
+        stroke: '#d1fae5',
+        padding: 2,
+      })
     })
   }
   const videoCount = (project.media || []).filter((item) => item.type === 'video').length
