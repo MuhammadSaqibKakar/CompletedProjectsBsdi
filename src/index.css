@@ -854,17 +854,28 @@ video {
   .print-project-page {
     break-after: page;
     page-break-after: always;
+    display: grid;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head"
+      "meta"
+      "scope"
+      "title"
+      "images"
+      "footer";
+    gap: 6px;
     overflow: hidden;
     border: 1.5px solid #bbf7d0;
     border-radius: 18px;
     background:
       radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.13), transparent 30%),
       linear-gradient(145deg, #ffffff 0%, #ffffff 48%, #f0fdf4 100%);
-    padding: 10mm 12mm 10mm 16mm;
+    padding: 8mm 10mm 8mm 15mm;
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
   }
 
   .print-project-page-head {
+    grid-area: head;
     display: flex;
     justify-content: space-between;
     gap: 16px;
@@ -905,18 +916,20 @@ video {
   }
 
   .print-project-meta {
+    grid-area: meta;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    margin-top: 8px;
+    gap: 5px;
+    margin-top: 0;
   }
 
   .print-project-meta span {
+    min-width: 0;
     border: 1px solid #d1fae5;
     border-radius: 12px;
     background: #ffffff;
     color: #64748b;
-    padding: 7px 9px;
+    padding: 6px 8px;
     font-size: 8px;
     font-weight: 900;
     letter-spacing: 0.04em;
@@ -930,10 +943,17 @@ video {
     font-size: 10px;
     letter-spacing: 0;
     text-transform: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .print-project-scope {
-    margin-top: 8px;
+    grid-area: scope;
+    min-height: 0;
+    max-height: 17mm;
+    margin-top: 0;
+    overflow: hidden;
     border: 1px solid #e2e8f0;
     border-radius: 14px;
     background: #ffffff;
@@ -946,12 +966,13 @@ video {
     font-size: 8.5px;
     line-height: 1.35;
     font-weight: 700;
-    max-height: 21mm;
+    max-height: 13mm;
     overflow: hidden;
   }
 
   .print-gallery-title {
-    margin: 8px 0 6px;
+    grid-area: title;
+    margin: 0;
     color: #065f46;
     font-size: 9px;
     font-weight: 900;
@@ -960,11 +981,13 @@ video {
   }
 
   .print-project-images {
+    grid-area: images;
     display: grid;
     grid-auto-flow: dense;
     gap: 6px;
-    height: 86mm;
-    max-height: 86mm;
+    min-height: 0;
+    height: auto;
+    max-height: none;
     overflow: hidden;
   }
 
@@ -986,21 +1009,15 @@ video {
 
   .print-project-images-1 {
     grid-template-columns: minmax(0, 1fr);
-    height: 92mm;
-    max-height: 92mm;
   }
 
   .print-project-images-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    height: 88mm;
-    max-height: 88mm;
   }
 
   .print-project-images-3 {
     grid-template-columns: 1.35fr 0.9fr;
     grid-template-rows: repeat(2, minmax(0, 1fr));
-    height: 88mm;
-    max-height: 88mm;
   }
 
   .print-project-images-3 img:nth-child(1) {
@@ -1021,8 +1038,6 @@ video {
   .print-project-images-4 {
     grid-template-columns: 1.3fr repeat(2, minmax(0, 0.9fr));
     grid-template-rows: repeat(2, minmax(0, 1fr));
-    height: 86mm;
-    max-height: 86mm;
   }
 
   .print-project-images-4 img:nth-child(1) {
@@ -1046,10 +1061,11 @@ video {
   }
 
   .print-project-placeholder {
+    grid-area: images;
     display: grid;
-    min-height: 86mm;
+    min-height: 0;
     place-items: center;
-    margin-top: 14px;
+    margin-top: 0;
     border: 1px dashed #cbd5e1;
     border-radius: 14px;
     background: #ffffff;
@@ -1059,10 +1075,11 @@ video {
   }
 
   .print-project-footer {
+    grid-area: footer;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 8px;
+    margin-top: 0;
   }
 
   .print-project-footer span {
