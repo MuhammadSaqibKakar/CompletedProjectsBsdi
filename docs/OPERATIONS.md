@@ -91,7 +91,7 @@ After that, MySQL becomes the source of truth for online users. GitHub redeploys
 
 If the frontend is hosted separately from the Node API, build the frontend with `VITE_BSDI_API_BASE_URL` set to the Node API domain.
 
-When an online save succeeds, old generated PDF files are deleted and the default `Total / All Districts` report starts rebuilding in the background. The PDF file is stored in persistent `BSDI_DATA_DIR/generated-reports/`; project records remain in MySQL.
+When an online save succeeds, old generated PDF files are deleted and the default `Total / All Districts` report starts rebuilding in the background. The Print button downloads that cached PDF directly with a Pakistan-time filename. The PDF file is stored in persistent `BSDI_DATA_DIR/generated-reports/`; project records remain in MySQL.
 
 ## Backup Routine
 

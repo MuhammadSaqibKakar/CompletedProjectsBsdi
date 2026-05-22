@@ -162,6 +162,42 @@ function expectedRevisionFromRequest(req, incoming) {
   )
 }
 
+function isDefaultReportFilter(filters = {}) {
+  return (filters.phase || 'Total') === 'Total' && (filters.district || 'All Districts') === 'All Districts'
+}
+
+function pakistanFileStamp(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  )
+  const hour = parts.hour === '24' ? '00' : parts.hour
+  return `${parts.year}${parts.month}${parts.day} ${hour}${parts.minute}${parts.second}`
+}
+
+function reportDownloadName() {
+  return `Bsdi completed projects ${pakistanFileStamp()}.pdf`
+}
+
+async function ensureDefaultReport(data) {
+  await generateCachedReport({
+    data,
+    reportsDir,
+    rootDir,
+    dataDir,
+    filters: { phase: 'Total', district: 'All Districts' },
+    force: false,
+  })
+}
+
 async function rebuildDefaultReport(data) {
   await clearReportCache(reportsDir)
   await generateCachedReport({
@@ -187,6 +223,16 @@ function queueDefaultReportRebuild(data) {
     })
     .catch((error) => {
       console.warn(`Default report rebuild failed: ${error.message}`)
+    })
+  return defaultReportJob
+}
+
+function queueDefaultReportWarmup(data) {
+  defaultReportJob = defaultReportJob
+    .catch(() => undefined)
+    .then(() => ensureDefaultReport(data))
+    .catch((error) => {
+      console.warn(`Default report warmup failed: ${error.message}`)
     })
   return defaultReportJob
 }
@@ -226,17 +272,20 @@ app.get('/api/report/pdf', async (req, res, next) => {
       phase: req.query.phase || 'Total',
       district: req.query.district || 'All Districts',
     }
+    const force = req.query.force === '1'
+    if (isDefaultReportFilter(filters) && !force) {
+      await defaultReportJob.catch(() => undefined)
+    }
     const reportPath = await generateCachedReport({
       data: state,
       reportsDir,
       rootDir,
       dataDir,
       filters,
-      force: true,
+      force,
     })
     res.set('Cache-Control', 'no-store')
-    res.type('application/pdf')
-    res.sendFile(reportPath)
+    res.download(reportPath, reportDownloadName())
   } catch (error) {
     next(error)
   }
@@ -347,4 +396,9 @@ app.use((error, _req, res, next) => {
 app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
+  readDashboardState()
+    .then((state) => queueDefaultReportWarmup(state))
+    .catch((error) => {
+      console.warn(`Default report startup warmup skipped: ${error.message}`)
+    })
 })

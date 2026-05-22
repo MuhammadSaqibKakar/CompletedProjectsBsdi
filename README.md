@@ -51,7 +51,7 @@ The bundled database is stored at `public/database/bsdi-db.json`.
 - Toast notifications for save, delete, upload, lock/unlock, sync, and error states.
 - Offline local cache for meeting mode.
 - Shared sync API for multi-laptop online edits.
-- Print-ready report layout for browser printing, plus server-side cached PDF regeneration after online saves.
+- Print button downloads the latest server-cached PDF report instead of opening the browser print preview.
 - Render/Hostinger-compatible Node deployment path.
 
 ## Project Structure
@@ -158,7 +158,7 @@ The server uses a revision number to stop silent overwrites. If two admins edit 
 
 For production, set `BSDI_REQUIRE_MYSQL=true`. With that guard enabled, online saves and media uploads are blocked unless MySQL is connected, so new website data cannot silently go into a temporary JSON file.
 
-After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report in the background. Project records remain in MySQL; uploaded media and generated PDF files remain in persistent `BSDI_DATA_DIR`.
+After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report in the background. The Print button downloads that cached PDF with a Pakistan-time filename. Project records remain in MySQL; uploaded media and generated PDF files remain in persistent `BSDI_DATA_DIR`.
 
 For split frontend/backend hosting, build the frontend with `VITE_BSDI_API_BASE_URL=https://your-node-api-domain` so `/api/state`, `/api/media`, and synced uploaded media resolve to the separate Node service. For a single Hostinger Node app, leave it unset.
 

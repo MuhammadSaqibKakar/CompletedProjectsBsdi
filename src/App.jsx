@@ -49,6 +49,7 @@ const MEDIA_CACHE_NAME = 'bsdi-media'
 const API_BASE_URL = (import.meta.env.VITE_BSDI_API_BASE_URL || '').replace(/\/+$/, '')
 const API_STATE_ENDPOINT = `${API_BASE_URL}/api/state`
 const API_MEDIA_ENDPOINT = `${API_BASE_URL}/api/media`
+const API_REPORT_ENDPOINT = `${API_BASE_URL}/api/report/pdf`
 const API_UNAVAILABLE_MESSAGE = 'Shared sync server is not enabled on this deployment'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
 const BALOCHISTAN_MAP = '/brand/balochistan-district-map-print.jpg'
@@ -114,6 +115,16 @@ const pakistanTimestampFormatter = new Intl.DateTimeFormat('en-GB', {
   hour12: true,
   timeZone: 'Asia/Karachi',
 })
+const pakistanFileTimestampFormatter = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZone: 'Asia/Karachi',
+})
 
 const fieldList = [
   ['title', 'Project title', 'text'],
@@ -165,8 +176,20 @@ function getPakistanDisplayDate() {
   return pakistanDateFormatter.format(new Date())
 }
 
-function getPakistanPrintTimestamp() {
-  return pakistanTimestampFormatter.format(new Date())
+function getPakistanPrintTimestamp(date = new Date()) {
+  return pakistanTimestampFormatter.format(date)
+}
+
+function getPakistanFileTimestamp(date = new Date()) {
+  const parts = Object.fromEntries(
+    pakistanFileTimestampFormatter.formatToParts(date).map((part) => [part.type, part.value]),
+  )
+  const hour = parts.hour === '24' ? '00' : parts.hour
+  return `${parts.year}${parts.month}${parts.day} ${hour}${parts.minute}${parts.second}`
+}
+
+function reportDownloadFileName(date = new Date()) {
+  return `Bsdi completed projects ${getPakistanFileTimestamp(date)}.pdf`
 }
 
 function toId(value) {
@@ -206,6 +229,16 @@ function getProjectMapPoint(projects = [], fallbackName = '') {
 function resolveSyncedMediaSrc(src) {
   if (!API_BASE_URL || !src || !src.startsWith('/synced-media/')) return src
   return `${API_BASE_URL}${src}`
+}
+
+function reportDownloadUrl() {
+  const params = new URLSearchParams({
+    phase: 'Total',
+    district: DISTRICT_FILTER_ALL,
+    download: '1',
+    t: String(Date.now()),
+  })
+  return `${API_REPORT_ENDPOINT}?${params.toString()}`
 }
 
 function cleanPhaseCatalog(phases = [], projects = []) {
@@ -4232,12 +4265,21 @@ export default function App() {
 
   function printAllProjects() {
     if (printBusy) return
-    setPakistanPrintTimestamp(getPakistanPrintTimestamp())
+    const downloadTime = new Date()
+    const fileName = reportDownloadFileName(downloadTime)
+    setPakistanPrintTimestamp(getPakistanPrintTimestamp(downloadTime))
     setPrintBusy(true)
-    setPrintRequested(true)
-    window.setTimeout(() => {
-      setPrintReportReady(true)
-    }, 25)
+
+    const link = document.createElement('a')
+    link.href = reportDownloadUrl()
+    link.download = fileName
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+
+    notify('PDF download started', fileName, 'success')
+    window.setTimeout(() => setPrintBusy(false), 1200)
   }
 
   if (loadError) {
