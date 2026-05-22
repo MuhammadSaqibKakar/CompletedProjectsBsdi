@@ -4224,21 +4224,7 @@ export default function App() {
     ? 'Upload pending edits, then load the latest shared database'
     : 'Sync with the shared database when the Node server is available'
 
-  function reportPdfUrl() {
-    const params = new URLSearchParams({
-      phase: phaseSelection,
-      district: districtSelection,
-      force: 'true',
-      _: String(Date.now()),
-    })
-    return `${API_BASE_URL}/api/report/pdf?${params.toString()}`
-  }
-
   function printAllProjects() {
-    if (online && syncAvailable) {
-      window.location.assign(reportPdfUrl())
-      return
-    }
     setPrintReportReady(true)
     setPrintRequested(true)
   }
