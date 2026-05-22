@@ -105,6 +105,15 @@ const pakistanDateFormatter = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
   timeZone: 'Asia/Karachi',
 })
+const pakistanTimestampFormatter = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+  timeZone: 'Asia/Karachi',
+})
 
 const fieldList = [
   ['title', 'Project title', 'text'],
@@ -154,6 +163,10 @@ function unique(values) {
 
 function getPakistanDisplayDate() {
   return pakistanDateFormatter.format(new Date())
+}
+
+function getPakistanPrintTimestamp() {
+  return pakistanTimestampFormatter.format(new Date())
 }
 
 function toId(value) {
@@ -3501,6 +3514,7 @@ export default function App() {
   const [syncAvailable, setSyncAvailable] = useState(false)
   const [syncBusy, setSyncBusy] = useState(false)
   const [pakistanDisplayDate, setPakistanDisplayDate] = useState(() => getPakistanDisplayDate())
+  const [pakistanPrintTimestamp, setPakistanPrintTimestamp] = useState(() => getPakistanPrintTimestamp())
   const [printReportReady, setPrintReportReady] = useState(false)
   const [printRequested, setPrintRequested] = useState(false)
   const [printBusy, setPrintBusy] = useState(false)
@@ -3519,9 +3533,12 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const refreshPakistanDate = () => setPakistanDisplayDate(getPakistanDisplayDate())
-    refreshPakistanDate()
-    const timer = window.setInterval(refreshPakistanDate, 30 * 1000)
+    const refreshPakistanTime = () => {
+      setPakistanDisplayDate(getPakistanDisplayDate())
+      setPakistanPrintTimestamp(getPakistanPrintTimestamp())
+    }
+    refreshPakistanTime()
+    const timer = window.setInterval(refreshPakistanTime, 30 * 1000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -4215,6 +4232,7 @@ export default function App() {
 
   function printAllProjects() {
     if (printBusy) return
+    setPakistanPrintTimestamp(getPakistanPrintTimestamp())
     setPrintBusy(true)
     setPrintRequested(true)
     window.setTimeout(() => {
@@ -4417,16 +4435,21 @@ export default function App() {
               )
             })}
           </nav>
-          <button
-            type="button"
-            onClick={printAllProjects}
-            disabled={printBusy}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700"
-            title="Open the print-ready completed-project report"
-          >
-            {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}
-            {printBusy ? 'Preparing' : 'Print'}
-          </button>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
+            <span className="order-2 text-right text-[11px] font-semibold text-slate-400 sm:order-1">
+              Print time: {pakistanPrintTimestamp}
+            </span>
+            <button
+              type="button"
+              onClick={printAllProjects}
+              disabled={printBusy}
+              className="order-1 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-70 sm:order-2"
+              title="Open the print-ready completed-project report"
+            >
+              {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}
+              {printBusy ? 'Preparing' : 'Print'}
+            </button>
+          </div>
         </div>
 
         {/* Tab content */}
@@ -4501,7 +4524,7 @@ export default function App() {
             stats={stats}
             phaseSelection={phaseSelection}
             districtSelection={districtSelection}
-            date={pakistanDisplayDate}
+            date={pakistanPrintTimestamp}
           />
         </div>
       ) : null}
