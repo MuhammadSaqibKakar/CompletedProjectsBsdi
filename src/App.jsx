@@ -115,16 +115,6 @@ const pakistanTimestampFormatter = new Intl.DateTimeFormat('en-GB', {
   hour12: true,
   timeZone: 'Asia/Karachi',
 })
-const pakistanFileTimestampFormatter = new Intl.DateTimeFormat('en-GB', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-  timeZone: 'Asia/Karachi',
-})
 
 const fieldList = [
   ['title', 'Project title', 'text'],
@@ -178,18 +168,6 @@ function getPakistanDisplayDate() {
 
 function getPakistanPrintTimestamp(date = new Date()) {
   return pakistanTimestampFormatter.format(date)
-}
-
-function getPakistanFileTimestamp(date = new Date()) {
-  const parts = Object.fromEntries(
-    pakistanFileTimestampFormatter.formatToParts(date).map((part) => [part.type, part.value]),
-  )
-  const hour = parts.hour === '24' ? '00' : parts.hour
-  return `${parts.year}${parts.month}${parts.day} ${hour}${parts.minute}${parts.second}`
-}
-
-function reportDownloadFileName(date = new Date()) {
-  return `Bsdi completed projects ${getPakistanFileTimestamp(date)}.pdf`
 }
 
 function toId(value) {
@@ -4266,19 +4244,17 @@ export default function App() {
   function printAllProjects() {
     if (printBusy) return
     const downloadTime = new Date()
-    const fileName = reportDownloadFileName(downloadTime)
     setPakistanPrintTimestamp(getPakistanPrintTimestamp(downloadTime))
     setPrintBusy(true)
 
     const link = document.createElement('a')
     link.href = reportDownloadUrl()
-    link.download = fileName
     link.rel = 'noopener'
     document.body.appendChild(link)
     link.click()
     link.remove()
 
-    notify('PDF download started', fileName, 'success')
+    notify('PDF download started', 'The file name uses the saved PDF time.', 'success')
     window.setTimeout(() => setPrintBusy(false), 1200)
   }
 
@@ -4477,15 +4453,12 @@ export default function App() {
               )
             })}
           </nav>
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
-            <span className="order-2 text-right text-[11px] font-semibold text-slate-400 sm:order-1">
-              Print time: {pakistanPrintTimestamp}
-            </span>
+          <div className="flex sm:items-center">
             <button
               type="button"
               onClick={printAllProjects}
               disabled={printBusy}
-              className="order-1 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-70 sm:order-2"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
               title="Open the print-ready completed-project report"
             >
               {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}

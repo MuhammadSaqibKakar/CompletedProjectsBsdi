@@ -171,20 +171,20 @@ function pakistanFileStamp(date = new Date()) {
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Asia/Karachi',
       year: 'numeric',
-      month: '2-digit',
+      month: 'short',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
       hour12: false,
     }).formatToParts(date).map((part) => [part.type, part.value]),
   )
   const hour = parts.hour === '24' ? '00' : parts.hour
-  return `${parts.year}${parts.month}${parts.day} ${hour}${parts.minute}${parts.second}`
+  return `${parts.day} ${parts.month} ${parts.year} - ${hour}${parts.minute} PKT`
 }
 
-function reportDownloadName() {
-  return `Bsdi completed projects ${pakistanFileStamp()}.pdf`
+async function reportDownloadName(reportPath) {
+  const stat = await fs.stat(reportPath)
+  return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pdf`
 }
 
 async function rebuildDefaultReport(data) {
@@ -264,7 +264,7 @@ app.get('/api/report/pdf', async (req, res, next) => {
       force,
     })
     res.set('Cache-Control', 'no-store')
-    res.download(reportPath, reportDownloadName())
+    res.download(reportPath, await reportDownloadName(reportPath))
   } catch (error) {
     next(error)
   }
