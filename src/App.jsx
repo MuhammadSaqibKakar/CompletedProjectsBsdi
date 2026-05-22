@@ -3871,11 +3871,6 @@ export default function App() {
           body: JSON.stringify({ phase: phaseSelection, district: districtSelection }),
         })
         setPdfStatus(result)
-        if (result.warming && !result.ready) {
-          window.setTimeout(() => {
-            void fetchPdfStatus({ quiet: true })
-          }, 4000)
-        }
         return result
       } catch (error) {
         if (!options.quiet) notify('PDF prepare failed', error.message || 'Try Print again later.', 'info')
@@ -3884,7 +3879,7 @@ export default function App() {
         setPdfStatusBusy(false)
       }
     },
-    [districtSelection, fetchPdfStatus, notify, phaseSelection, syncAvailable],
+    [districtSelection, notify, phaseSelection, syncAvailable],
   )
 
   useEffect(() => {
@@ -3893,10 +3888,10 @@ export default function App() {
 
   useEffect(() => {
     if (!pdfStatus.warming) return undefined
-    const timer = window.setTimeout(() => {
+    const timer = window.setInterval(() => {
       void fetchPdfStatus({ quiet: true })
     }, 3500)
-    return () => window.clearTimeout(timer)
+    return () => window.clearInterval(timer)
   }, [fetchPdfStatus, pdfStatus.warming])
 
   async function pushSnapshotToServer(snapshot, password = adminSessionPassword, options = {}) {
