@@ -4236,11 +4236,8 @@ export default function App() {
 
   function printAllProjects() {
     if (online && syncAvailable) {
-      const reportWindow = window.open(reportPdfUrl(), '_blank', 'noopener,noreferrer')
-      if (reportWindow) {
-        notify('Generating fresh PDF', 'A new report is being created in the opened tab.', 'info')
-        return
-      }
+      window.location.assign(reportPdfUrl())
+      return
     }
     setPrintReportReady(true)
     setPrintRequested(true)
