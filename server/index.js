@@ -5,7 +5,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
-import { clearReportCache, generateCachedReport, warmDefaultReport } from './report.js'
+import { clearReportCache, generateCachedReport } from './report.js'
 import { createDashboardStorage } from './storage.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -207,7 +207,6 @@ app.put('/api/state', async (req, res, next) => {
     const merged = mergeDashboardState(current, incoming)
     const saved = await dashboardStorage.writeState(merged, expectedRevisionFromRequest(req, incoming))
     await clearReportCache(reportsDir)
-    warmDefaultReport({ data: saved, reportsDir, rootDir, dataDir })
     res.json({
       ok: true,
       updatedAt: saved.updatedAt,
@@ -300,7 +299,4 @@ app.use((error, _req, res, next) => {
 app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
-  readDashboardState()
-    .then((state) => warmDefaultReport({ data: state, reportsDir, rootDir, dataDir }))
-    .catch((error) => console.warn(`Initial report generation skipped: ${error.message}`))
 })

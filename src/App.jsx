@@ -1346,10 +1346,10 @@ function PrintMapPanel({ title, subtitle, markerLabel, markerPoint }) {
 }
 
 function PrintReportProjectPage({ project, index, divisionName, districtName }) {
-  const images = (project.media || []).filter((item) => item.type !== 'video').slice(0, 8)
+  const images = (project.media || []).filter((item) => item.type !== 'video').slice(0, 4)
   const videoCount = (project.media || []).filter((item) => item.type === 'video').length
   const serial = project.slide ? `#${project.slide}` : String(index + 1).padStart(3, '0')
-  const imageLayoutClass = `print-project-images-${Math.min(images.length, 8)}`
+  const imageLayoutClass = `print-project-images-${Math.min(images.length, 4)}`
 
   return (
     <article className="print-project-page">
@@ -3822,6 +3822,8 @@ export default function App() {
 
   async function syncLatest(options = {}) {
     if (syncBusy) return
+    setPrintRequested(false)
+    setPrintReportReady(false)
     setSyncBusy(true)
     let pendingSnapshot = null
     try {

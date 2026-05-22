@@ -405,7 +405,8 @@ video {
   .print-project-page {
     position: relative;
     box-sizing: border-box;
-    min-height: 178mm;
+    width: 269mm;
+    min-height: 194mm;
     margin: 0;
   }
 
@@ -858,7 +859,7 @@ video {
     background:
       radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.13), transparent 30%),
       linear-gradient(145deg, #ffffff 0%, #ffffff 48%, #f0fdf4 100%);
-    padding: 14px 16px 14px 30px;
+    padding: 10mm 12mm 10mm 16mm;
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
   }
 
@@ -872,7 +873,7 @@ video {
   .print-project-page h2 {
     margin: 0;
     color: #020617;
-    font-size: 21px;
+    font-size: 19px;
     line-height: 1.12;
     font-weight: 950;
   }
@@ -905,8 +906,8 @@ video {
   .print-project-meta {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 10px;
+    gap: 6px;
+    margin-top: 8px;
   }
 
   .print-project-meta span {
@@ -914,8 +915,8 @@ video {
     border-radius: 12px;
     background: #ffffff;
     color: #64748b;
-    padding: 9px 10px;
-    font-size: 9px;
+    padding: 7px 9px;
+    font-size: 8px;
     font-weight: 900;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -923,33 +924,35 @@ video {
 
   .print-project-meta strong {
     display: block;
-    margin-top: 4px;
+    margin-top: 3px;
     color: #0f172a;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0;
     text-transform: none;
   }
 
   .print-project-scope {
-    margin-top: 9px;
+    margin-top: 8px;
     border: 1px solid #e2e8f0;
     border-radius: 14px;
     background: #ffffff;
-    padding: 11px 12px;
+    padding: 8px 10px;
   }
 
   .print-project-scope p {
     margin: 0;
     color: #475569;
-    font-size: 10px;
-    line-height: 1.55;
+    font-size: 8.5px;
+    line-height: 1.35;
     font-weight: 700;
+    max-height: 21mm;
+    overflow: hidden;
   }
 
   .print-gallery-title {
-    margin: 10px 0 7px;
+    margin: 8px 0 6px;
     color: #065f46;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 900;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -958,64 +961,55 @@ video {
   .print-project-images {
     display: grid;
     grid-auto-flow: dense;
-    gap: 8px;
-    height: 82mm;
+    gap: 6px;
+    height: 86mm;
+    max-height: 86mm;
+    overflow: hidden;
   }
 
   .print-project-images img {
     width: 100%;
     height: 100%;
     min-height: 0;
+    max-height: 100%;
     border: 1px solid #d1fae5;
     border-radius: 12px;
     background: #f8fafc;
     object-fit: cover;
+    break-inside: avoid;
+    page-break-inside: avoid;
     box-shadow: 0 6px 15px rgba(15, 23, 42, 0.09);
   }
 
   .print-project-images-1 {
     grid-template-columns: minmax(0, 1fr);
-    height: 96mm;
+    height: 92mm;
+    max-height: 92mm;
   }
 
   .print-project-images-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    height: 92mm;
+    height: 88mm;
+    max-height: 88mm;
   }
 
   .print-project-images-3 {
     grid-template-columns: 1.35fr 0.9fr;
     grid-template-rows: repeat(2, minmax(0, 1fr));
-    height: 92mm;
+    height: 88mm;
+    max-height: 88mm;
   }
 
   .print-project-images-3 img:first-child,
-  .print-project-images-4 img:first-child,
-  .print-project-images-5 img:first-child,
-  .print-project-images-6 img:first-child,
-  .print-project-images-7 img:first-child,
-  .print-project-images-8 img:first-child {
+  .print-project-images-4 img:first-child {
     grid-row: span 2;
   }
 
   .print-project-images-4 {
-    grid-template-columns: 1.2fr repeat(2, minmax(0, 0.9fr));
-    grid-template-rows: repeat(2, minmax(0, 1fr));
-    height: 88mm;
-  }
-
-  .print-project-images-5,
-  .print-project-images-6 {
-    grid-template-columns: 1.18fr repeat(3, minmax(0, 0.9fr));
+    grid-template-columns: 1.3fr repeat(2, minmax(0, 0.9fr));
     grid-template-rows: repeat(2, minmax(0, 1fr));
     height: 86mm;
-  }
-
-  .print-project-images-7,
-  .print-project-images-8 {
-    grid-template-columns: 1.12fr repeat(4, minmax(0, 0.85fr));
-    grid-template-rows: repeat(2, minmax(0, 1fr));
-    height: 84mm;
+    max-height: 86mm;
   }
 
   .print-project-placeholder {
@@ -1035,7 +1029,7 @@ video {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 12px;
+    margin-top: 8px;
   }
 
   .print-project-footer span {
