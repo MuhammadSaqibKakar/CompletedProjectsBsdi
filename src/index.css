@@ -984,10 +984,12 @@ video {
     grid-area: images;
     display: grid;
     grid-auto-flow: dense;
+    grid-auto-rows: minmax(0, 1fr);
     gap: 6px;
+    align-self: stretch;
     min-height: 0;
-    height: auto;
-    max-height: none;
+    height: 100%;
+    max-height: 100%;
     overflow: hidden;
   }
 
@@ -1000,8 +1002,8 @@ video {
     max-height: 100%;
     border: 1px solid #d1fae5;
     border-radius: 12px;
-    background: #f8fafc;
-    object-fit: cover;
+    background: linear-gradient(135deg, #ffffff, #f8fafc);
+    object-fit: contain;
     break-inside: avoid;
     page-break-inside: avoid;
     box-shadow: 0 6px 15px rgba(15, 23, 42, 0.09);
@@ -1009,10 +1011,12 @@ video {
 
   .print-project-images-1 {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .print-project-images-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .print-project-images-3 {
@@ -1063,7 +1067,9 @@ video {
   .print-project-placeholder {
     grid-area: images;
     display: grid;
+    align-self: stretch;
     min-height: 0;
+    height: 100%;
     place-items: center;
     margin-top: 0;
     border: 1px dashed #cbd5e1;
