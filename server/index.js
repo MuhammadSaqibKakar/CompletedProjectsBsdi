@@ -183,17 +183,20 @@ function pakistanFileStamp(date = new Date()) {
   return `${parts.day} ${parts.month} ${parts.year} - ${hour}${parts.minute} PKT`
 }
 
-function pakistanTimeOnly(date = new Date()) {
+function pakistanDisplayStamp(date = new Date()) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Asia/Karachi',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
     }).formatToParts(date).map((part) => [part.type, part.value]),
   )
   const hour = parts.hour === '24' ? '00' : parts.hour
-  return `${hour}:${parts.minute}`
+  return `${parts.day} ${parts.month} ${parts.year}, ${hour}:${parts.minute}`
 }
 
 async function reportDownloadName(reportPath) {
@@ -300,7 +303,7 @@ app.get('/api/report/status', async (req, res, next) => {
     res.json({
       ...status,
       building: isDefaultReportFilter(filters) ? defaultReportBuilding || Boolean(queuedDefaultReportData) : false,
-      readyTime: status.readyAt ? pakistanTimeOnly(new Date(status.readyAt)) : '',
+      readyStamp: status.readyAt ? pakistanDisplayStamp(new Date(status.readyAt)) : '',
     })
   } catch (error) {
     next(error)

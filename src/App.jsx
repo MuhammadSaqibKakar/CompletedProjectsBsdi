@@ -3539,7 +3539,7 @@ export default function App() {
   const [printReportReady, setPrintReportReady] = useState(false)
   const [printRequested, setPrintRequested] = useState(false)
   const [printBusy, setPrintBusy] = useState(false)
-  const [latestSavedReportTime, setLatestSavedReportTime] = useState('')
+  const [latestSavedReportStamp, setLatestSavedReportStamp] = useState('')
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -3557,9 +3557,9 @@ export default function App() {
   const refreshReportStatus = useCallback(async () => {
     try {
       const status = await fetchJsonFromApi(reportStatusUrl())
-      setLatestSavedReportTime(status.readyTime || '')
+      setLatestSavedReportStamp(status.readyStamp || status.readyTime || '')
     } catch {
-      setLatestSavedReportTime('')
+      setLatestSavedReportStamp('')
     }
   }, [])
 
@@ -4490,12 +4490,12 @@ export default function App() {
               {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}
               {printBusy ? 'Preparing' : 'Print'}
             </button>
-            {latestSavedReportTime ? (
+            {latestSavedReportStamp ? (
               <span
-                className="min-w-[72px] text-right text-xs font-bold tabular-nums text-slate-400"
-                title="Latest saved PDF time"
+                className="text-right text-xs font-bold tabular-nums text-slate-400"
+                title="Latest saved PDF date and time"
               >
-                {latestSavedReportTime}
+                {latestSavedReportStamp}
               </span>
             ) : null}
           </div>
