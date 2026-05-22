@@ -3503,6 +3503,7 @@ export default function App() {
   const [pakistanDisplayDate, setPakistanDisplayDate] = useState(() => getPakistanDisplayDate())
   const [printReportReady, setPrintReportReady] = useState(false)
   const [printRequested, setPrintRequested] = useState(false)
+  const [printBusy, setPrintBusy] = useState(false)
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -3530,6 +3531,7 @@ export default function App() {
     const cleanupPrintReport = () => {
       setPrintRequested(false)
       setPrintReportReady(false)
+      setPrintBusy(false)
     }
 
     window.addEventListener('afterprint', cleanupPrintReport)
@@ -3541,19 +3543,6 @@ export default function App() {
 
     let cancelled = false
     const waitForFrame = () => new Promise((resolve) => window.requestAnimationFrame(resolve))
-    const waitForImage = async (image) => {
-      if (!image.complete) {
-        await new Promise((resolve) => {
-          const done = () => resolve()
-          image.addEventListener('load', done, { once: true })
-          image.addEventListener('error', done, { once: true })
-        })
-      }
-
-      if (image.decode) {
-        await image.decode().catch(() => undefined)
-      }
-    }
 
     async function prepareAndPrint() {
       await waitForFrame()
@@ -3562,16 +3551,16 @@ export default function App() {
       const reportNode = printReportRef.current
       if (!reportNode || cancelled) return
 
-      const images = Array.from(reportNode.querySelectorAll('img'))
-      const imageLoad = Promise.all(images.map(waitForImage))
-      const printFallback = new Promise((resolve) => window.setTimeout(resolve, 15000))
-
-      await Promise.race([imageLoad, printFallback])
-      if (document.fonts?.ready) await Promise.race([document.fonts.ready, printFallback])
+      // Do not wait for every project image here. Large district reports can
+      // contain hundreds of images, and Chrome will otherwise look frozen
+      // before the print preview appears.
+      const fontFallback = new Promise((resolve) => window.setTimeout(resolve, 600))
+      if (document.fonts?.ready) await Promise.race([document.fonts.ready, fontFallback])
       if (cancelled) return
 
       window.print()
       setPrintRequested(false)
+      setPrintBusy(false)
     }
 
     prepareAndPrint()
@@ -4225,8 +4214,12 @@ export default function App() {
     : 'Sync with the shared database when the Node server is available'
 
   function printAllProjects() {
-    setPrintReportReady(true)
+    if (printBusy) return
+    setPrintBusy(true)
     setPrintRequested(true)
+    window.setTimeout(() => {
+      setPrintReportReady(true)
+    }, 25)
   }
 
   if (loadError) {
@@ -4427,11 +4420,12 @@ export default function App() {
           <button
             type="button"
             onClick={printAllProjects}
+            disabled={printBusy}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700"
-            title="Generate a fresh completed-project PDF"
+            title="Open the print-ready completed-project report"
           >
-            <Printer size={15} />
-            Print
+            {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}
+            {printBusy ? 'Preparing' : 'Print'}
           </button>
         </div>
 
