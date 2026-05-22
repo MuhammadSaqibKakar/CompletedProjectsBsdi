@@ -49,8 +49,6 @@ const MEDIA_CACHE_NAME = 'bsdi-media'
 const API_BASE_URL = (import.meta.env.VITE_BSDI_API_BASE_URL || '').replace(/\/+$/, '')
 const API_STATE_ENDPOINT = `${API_BASE_URL}/api/state`
 const API_MEDIA_ENDPOINT = `${API_BASE_URL}/api/media`
-const API_REPORT_STATUS_ENDPOINT = `${API_BASE_URL}/api/report/status`
-const API_REPORT_WARM_ENDPOINT = `${API_BASE_URL}/api/report/warm`
 const API_UNAVAILABLE_MESSAGE = 'Shared sync server is not enabled on this deployment'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
 const BALOCHISTAN_MAP = '/brand/balochistan-district-map-print.jpg'
@@ -107,15 +105,6 @@ const pakistanDateFormatter = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
   timeZone: 'Asia/Karachi',
 })
-const pakistanDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-  hour12: true,
-  timeZone: 'Asia/Karachi',
-})
 
 const fieldList = [
   ['title', 'Project title', 'text'],
@@ -165,13 +154,6 @@ function unique(values) {
 
 function getPakistanDisplayDate() {
   return pakistanDateFormatter.format(new Date())
-}
-
-function formatPakistanTimestamp(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return pakistanDateTimeFormatter.format(date)
 }
 
 function toId(value) {
@@ -3521,8 +3503,6 @@ export default function App() {
   const [pakistanDisplayDate, setPakistanDisplayDate] = useState(() => getPakistanDisplayDate())
   const [printReportReady, setPrintReportReady] = useState(false)
   const [printRequested, setPrintRequested] = useState(false)
-  const [pdfStatus, setPdfStatus] = useState({ ready: false, readyAt: '', warming: false })
-  const [pdfStatusBusy, setPdfStatusBusy] = useState(false)
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -3829,75 +3809,6 @@ export default function App() {
     }))
   }
 
-  const reportQueryString = useCallback(
-    (phase = phaseSelection, district = districtSelection) =>
-      new URLSearchParams({ phase, district }).toString(),
-    [districtSelection, phaseSelection],
-  )
-
-  const fetchPdfStatus = useCallback(
-    async (options = {}) => {
-      if (!navigator.onLine || !syncAvailable) {
-        setPdfStatus((current) => ({
-          ...current,
-          ready: false,
-          warming: false,
-        }))
-        return null
-      }
-
-      try {
-        const result = await fetchJsonFromApi(`${API_REPORT_STATUS_ENDPOINT}?${reportQueryString()}&_=${Date.now()}`)
-        setPdfStatus(result)
-        return result
-      } catch (error) {
-        if (!options.quiet) notify('PDF status unavailable', error.message || 'Try again after sync.', 'info')
-        setPdfStatus((current) => ({ ...current, ready: false, warming: false }))
-        return null
-      }
-    },
-    [notify, reportQueryString, syncAvailable],
-  )
-
-  const warmCurrentPdf = useCallback(
-    async (options = {}) => {
-      if (!navigator.onLine || !syncAvailable) return null
-      setPdfStatusBusy(true)
-      setPdfStatus((current) => ({ ...current, warming: true }))
-      try {
-        const result = await fetchJsonFromApi(API_REPORT_WARM_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phase: phaseSelection,
-            district: districtSelection,
-            force: options.force === true,
-          }),
-        })
-        setPdfStatus(result)
-        return result
-      } catch (error) {
-        if (!options.quiet) notify('PDF prepare failed', error.message || 'Try Print again later.', 'info')
-        return null
-      } finally {
-        setPdfStatusBusy(false)
-      }
-    },
-    [districtSelection, notify, phaseSelection, syncAvailable],
-  )
-
-  useEffect(() => {
-    void fetchPdfStatus({ quiet: true })
-  }, [fetchPdfStatus])
-
-  useEffect(() => {
-    if (!pdfStatus.warming) return undefined
-    const timer = window.setInterval(() => {
-      void fetchPdfStatus({ quiet: true })
-    }, 3500)
-    return () => window.clearInterval(timer)
-  }, [fetchPdfStatus, pdfStatus.warming])
-
   async function pushSnapshotToServer(snapshot, password = adminSessionPassword, options = {}) {
     if (!navigator.onLine) throw new Error('No internet connection')
     if (!password) throw new Error('Unlock admin again before syncing online')
@@ -3930,7 +3841,6 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data))
       setBaseData(normalizeDataset(result.data))
     }
-    void warmCurrentPdf({ quiet: true, force: true })
     return result.data
   }
 
@@ -4066,7 +3976,6 @@ export default function App() {
         lastSyncedAt: syncedAt,
         pending: false,
       })
-      void warmCurrentPdf({ quiet: true })
       if (!options.quiet) {
         notify('Sync complete', syncMessage, mediaCache.failed || mediaCache.unsupported ? 'info' : 'success')
       }
@@ -4314,19 +4223,13 @@ export default function App() {
   const syncButtonTitle = syncAvailable
     ? 'Upload pending edits, then load the latest shared database'
     : 'Sync with the shared database when the Node server is available'
-  const pdfStatusLabel =
-    pdfStatusBusy || pdfStatus.warming || pdfStatus.stale
-      ? 'PDF preparing...'
-      : pdfStatus.readyAt
-        ? `Last PDF: ${formatPakistanTimestamp(pdfStatus.readyAt)}`
-        : online && syncAvailable
-          ? 'PDF not ready yet'
-          : 'PDF updates after sync'
 
   function reportPdfUrl() {
     const params = new URLSearchParams({
       phase: phaseSelection,
       district: districtSelection,
+      force: 'true',
+      _: String(Date.now()),
     })
     return `${API_BASE_URL}/api/report/pdf?${params.toString()}`
   }
@@ -4335,7 +4238,7 @@ export default function App() {
     if (online && syncAvailable) {
       const reportWindow = window.open(reportPdfUrl(), '_blank', 'noopener,noreferrer')
       if (reportWindow) {
-        notify('Opening PDF report', 'The generated report PDF is opening in a new tab.', 'info')
+        notify('Generating fresh PDF', 'A new report is being created in the opened tab.', 'info')
         return
       }
     }
@@ -4538,20 +4441,15 @@ export default function App() {
               )
             })}
           </nav>
-          <div className="flex flex-col items-stretch gap-1 sm:items-end">
-            <button
-              type="button"
-              onClick={printAllProjects}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700"
-              title="Print full completed-project report"
-            >
-              <Printer size={15} />
-              Print
-            </button>
-            <span className="px-1 text-[11px] font-semibold leading-none text-slate-400">
-              {pdfStatusLabel}
-            </span>
-          </div>
+          <button
+            type="button"
+            onClick={printAllProjects}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700"
+            title="Generate a fresh completed-project PDF"
+          >
+            <Printer size={15} />
+            Print
+          </button>
         </div>
 
         {/* Tab content */}

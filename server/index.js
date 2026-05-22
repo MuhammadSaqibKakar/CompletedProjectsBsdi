@@ -5,7 +5,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
-import { clearReportCache, generateCachedReport, getReportStatus, reportFileName } from './report.js'
+import { generateCachedReport } from './report.js'
 import { createDashboardStorage } from './storage.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -20,8 +20,6 @@ const liveDbPath = path.join(dataDir, 'bsdi-db.json')
 const port = Number(process.env.PORT || 4174)
 const uploadLimit = Number(process.env.BSDI_MAX_UPLOAD_BYTES || 1024 * 1024 * 1024)
 const dashboardStorage = createDashboardStorage({ bundledDbPath, liveDbPath })
-const warmingReports = new Set()
-const pendingReportWarmups = new Map()
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -151,68 +149,6 @@ function expectedRevisionFromRequest(req, incoming) {
   )
 }
 
-function reportFiltersFromRequest(req) {
-  return {
-    phase: req.body?.phase || req.query?.phase || 'Total',
-    district: req.body?.district || req.query?.district || 'All Districts',
-  }
-}
-
-function reportWarmKey(filters = {}) {
-  return reportFileName(filters)
-}
-
-function reportIsStale(status, state) {
-  const dataTime = Date.parse(state?.updatedAt || state?.generatedAt || '')
-  if (!Number.isFinite(dataTime)) return false
-  if (!status.ready || !status.readyAt) return true
-  const reportTime = Date.parse(status.readyAt)
-  if (!Number.isFinite(reportTime)) return true
-  return reportTime + 1000 < dataTime
-}
-
-async function runReportWarmup(key) {
-  warmingReports.add(key)
-  try {
-    while (pendingReportWarmups.has(key)) {
-      const request = pendingReportWarmups.get(key)
-      pendingReportWarmups.delete(key)
-      if (request.force) {
-        await fs.rm(path.join(reportsDir, reportFileName(request.filters)), { force: true })
-      }
-      await generateCachedReport({
-        data: request.data,
-        reportsDir,
-        rootDir,
-        dataDir,
-        filters: request.filters,
-        force: request.force,
-      })
-    }
-  } catch (error) {
-    console.warn(`Report warmup failed for ${key}: ${error.message}`)
-  } finally {
-    warmingReports.delete(key)
-  }
-}
-
-function warmReportInBackground(data, filters = {}, options = {}) {
-  const key = reportWarmKey(filters)
-  const existing = pendingReportWarmups.get(key)
-  pendingReportWarmups.set(key, {
-    data,
-    filters,
-    force: Boolean(options.force || existing?.force),
-  })
-  if (warmingReports.has(key)) return
-  void runReportWarmup(key)
-}
-
-function isReportPreparing(filters = {}) {
-  const key = reportWarmKey(filters)
-  return warmingReports.has(key) || pendingReportWarmups.has(key)
-}
-
 app.get('/api/health', async (_req, res, next) => {
   try {
     const state = await readDashboardState()
@@ -246,61 +182,17 @@ app.get('/api/report/pdf', async (req, res, next) => {
       phase: req.query.phase || 'Total',
       district: req.query.district || 'All Districts',
     }
-    const status = await getReportStatus({ reportsDir, filters })
     const reportPath = await generateCachedReport({
       data: state,
       reportsDir,
       rootDir,
       dataDir,
       filters,
-      force: reportIsStale(status, state),
+      force: true,
     })
     res.set('Cache-Control', 'no-store')
     res.type('application/pdf')
     res.sendFile(reportPath)
-  } catch (error) {
-    next(error)
-  }
-})
-
-app.get('/api/report/status', async (req, res, next) => {
-  try {
-    const state = await readDashboardState()
-    const filters = reportFiltersFromRequest(req)
-    const status = await getReportStatus({ reportsDir, filters })
-    const stale = reportIsStale(status, state)
-    if ((stale || !status.ready) && !isReportPreparing(filters)) {
-      warmReportInBackground(state, filters, { force: stale })
-    }
-    res.set('Cache-Control', 'no-store')
-    res.json({
-      ok: true,
-      ...filters,
-      ...status,
-      stale,
-      warming: isReportPreparing(filters),
-    })
-  } catch (error) {
-    next(error)
-  }
-})
-
-app.post('/api/report/warm', async (req, res, next) => {
-  try {
-    const state = await readDashboardState()
-    const filters = reportFiltersFromRequest(req)
-    const status = await getReportStatus({ reportsDir, filters })
-    const stale = reportIsStale(status, state)
-    const force = stale || req.query.force === 'true' || req.body?.force === true
-    warmReportInBackground(state, filters, { force })
-    res.set('Cache-Control', 'no-store')
-    res.status(status.ready ? 200 : 202).json({
-      ok: true,
-      ...filters,
-      ...status,
-      stale,
-      warming: isReportPreparing(filters) || !status.ready || stale,
-    })
   } catch (error) {
     next(error)
   }
@@ -316,8 +208,6 @@ app.put('/api/state', async (req, res, next) => {
     }
     const merged = mergeDashboardState(current, incoming)
     const saved = await dashboardStorage.writeState(merged, expectedRevisionFromRequest(req, incoming))
-    await clearReportCache(reportsDir)
-    warmReportInBackground(saved, { phase: 'Total', district: 'All Districts' }, { force: true })
     res.json({
       ok: true,
       updatedAt: saved.updatedAt,
@@ -410,11 +300,4 @@ app.use((error, _req, res, next) => {
 app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
-  readDashboardState()
-    .then(async (state) => {
-      const filters = { phase: 'Total', district: 'All Districts' }
-      const status = await getReportStatus({ reportsDir, filters })
-      warmReportInBackground(state, filters, { force: reportIsStale(status, state) })
-    })
-    .catch((error) => console.warn(`Initial report warmup skipped: ${error.message}`))
 })
