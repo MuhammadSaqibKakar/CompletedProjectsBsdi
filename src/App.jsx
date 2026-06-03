@@ -4134,14 +4134,17 @@ function ProposalReviewPanel({
                             ].map((item) => {
                               const Icon = item.icon
                               return (
-                                <div key={item.label} className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm shadow-slate-950/5">
+                                <div
+                                  key={item.label}
+                                  className="min-w-0 rounded-2xl border border-blue-300/30 bg-gradient-to-br from-sky-950 via-blue-800 to-indigo-800 p-3 text-white shadow-lg shadow-blue-950/15 ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-950/20"
+                                >
                                   <div className="flex items-center gap-2">
-                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700">
+                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-white/15 bg-white/15 text-blue-50">
                                       <Icon size={14} />
                                     </span>
-                                    <span className="form-label text-[10px]">{item.label}</span>
+                                    <span className="text-[10px] font-black uppercase tracking-wide text-blue-100/80">{item.label}</span>
                                   </div>
-                                  <p className="mt-2 truncate text-sm font-black text-slate-800">{item.value}</p>
+                                  <p className="mt-2 truncate text-sm font-black text-white">{item.value}</p>
                                 </div>
                               )
                             })}
