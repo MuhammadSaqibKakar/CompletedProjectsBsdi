@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { unzipSync } from 'fflate'
 import {
   ArrowLeft,
   ArrowRight,
@@ -133,6 +134,42 @@ const fieldList = [
   ['driveLink', 'Drive folder link', 'text'],
 ]
 
+const ENGINEER_ASSESSMENT_OPTIONS = [
+  'For benefit of people',
+  'For political cause',
+  'Highly recommended by military',
+  'Urgent public need',
+  'Technically feasible',
+  'Needs field verification',
+  'Duplicate / overlap',
+  'Low priority',
+]
+
+const RECOMMENDATION_OPTIONS = ['Yes', 'No']
+
+const PROPOSAL_HEADER_ALIASES = {
+  serial: ['#', 'serial', 'sr', 'sno', 'srno'],
+  description: ['description', 'projectdescription', 'project', 'name', 'projectname'],
+  district: ['district'],
+  category: ['category', 'sector'],
+  phase: ['phase'],
+  costMn: ['costmn', 'cost', 'estimatedcost', 'estimatedcostmn'],
+  executingAgency: ['executingagency', 'agency', 'department'],
+  status: ['status'],
+  submittedBy: ['submittedby'],
+  submittedAt: ['submittedat'],
+  piuForwardedBy: ['piuforwardedby'],
+  piuForwardedAt: ['piuforwardedat'],
+  pscReviewedBy: ['pscreviewedby'],
+  pscReviewedAt: ['pscreviewedat'],
+  rejectionReason: ['pscpiurejectionreason', 'rejectionreason'],
+  projectId: ['projectid', 'id'],
+  sourceRemarks: ['remarks', 'sourceRemarks'],
+  assessedByEngr: ['asstbyengr', 'assessedbyengr', 'asstbyengineer', 'assessmentbyengr', 'asstbynegr'],
+  recommendation: ['recommendation', 'recommended', 'yesno'],
+  remarksComd: ['remarkscomd', 'comdremarks', 'remarkscommand', 'commandremarks'],
+}
+
 function createBlankProject(divisions) {
   const id = `project-${Date.now()}`
   return {
@@ -178,6 +215,302 @@ function toId(value) {
     .replace(/&/g, 'and')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || `item-${Date.now()}`
+}
+
+function compactKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9#]+/g, '')
+}
+
+function cleanCellText(value) {
+  if (value == null) return ''
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return getPakistanPrintTimestamp(value)
+  const text = String(value).replace(/\r\n/g, '\n').replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim()
+  return ['—', '-', 'nil', 'n/a', 'na', 'null'].includes(text.toLowerCase()) ? '' : text
+}
+
+function proposalDocumentId(fileName = 'proposal') {
+  const now = new Date()
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(now).map((part) => [part.type, part.value]),
+  )
+  const stamp = `${parts.year}${parts.month}${parts.day}-${parts.hour}${parts.minute}${parts.second}`
+  return `proposal-${stamp}-${toId(fileName).slice(0, 42)}`
+}
+
+function proposalUploadLabel(date = new Date()) {
+  return getPakistanPrintTimestamp(date)
+}
+
+function getProposalColumnIndex(headers, field) {
+  const aliases = PROPOSAL_HEADER_ALIASES[field] || [field]
+  const normalized = headers.map(compactKey)
+  return normalized.findIndex((header) => aliases.some((alias) => header === compactKey(alias)))
+}
+
+function findProposalHeaderIndex(rows) {
+  return rows.findIndex((row) => {
+    const normalized = row.map(compactKey)
+    return normalized.includes('description') && normalized.includes('district') && normalized.some((item) => item.includes('cost'))
+  })
+}
+
+function cleanProposalRow(row = {}, fallbackIndex = 0, documentId = '') {
+  const id = row.id || `${documentId || 'proposal'}-row-${String(fallbackIndex + 1).padStart(4, '0')}`
+  const costMn = Number(row.costMn) || parseCostToMillions(row.costText || row.cost)
+  return {
+    id,
+    serial: cleanCellText(row.serial) || String(fallbackIndex + 1),
+    description: cleanCellText(row.description),
+    district: cleanCellText(row.district),
+    category: cleanCellText(row.category),
+    phase: cleanCellText(row.phase) || 'Phase-3',
+    costText: cleanCellText(row.costText || row.costMn || row.cost),
+    costMn,
+    executingAgency: cleanCellText(row.executingAgency),
+    status: cleanCellText(row.status),
+    submittedBy: cleanCellText(row.submittedBy),
+    submittedAt: cleanCellText(row.submittedAt),
+    piuForwardedBy: cleanCellText(row.piuForwardedBy),
+    piuForwardedAt: cleanCellText(row.piuForwardedAt),
+    pscReviewedBy: cleanCellText(row.pscReviewedBy),
+    pscReviewedAt: cleanCellText(row.pscReviewedAt),
+    rejectionReason: cleanCellText(row.rejectionReason),
+    projectId: cleanCellText(row.projectId),
+    sourceRemarks: cleanCellText(row.sourceRemarks),
+    assessedByEngr: cleanCellText(row.assessedByEngr),
+    recommendation: RECOMMENDATION_OPTIONS.includes(row.recommendation) ? row.recommendation : '',
+    remarksComd: cleanCellText(row.remarksComd),
+  }
+}
+
+function cleanProposalDocument(document = {}) {
+  const id = document.id || proposalDocumentId(document.fileName || document.title || 'proposal')
+  const rows = (document.rows || [])
+    .map((row, index) => cleanProposalRow(row, index, id))
+    .filter((row) => row.description || row.district || row.costMn)
+  const totalCostMn = rows.reduce((sum, row) => sum + (Number(row.costMn) || 0), 0)
+  const districts = unique(rows.map((row) => row.district))
+  const categories = unique(rows.map((row) => row.category))
+  return {
+    id,
+    title: cleanCellText(document.title) || cleanCellText(document.fileName) || 'Proposal document',
+    fileName: cleanCellText(document.fileName),
+    uploadedAt: document.uploadedAt || new Date().toISOString(),
+    uploadedLabel: document.uploadedLabel || proposalUploadLabel(new Date(document.uploadedAt || Date.now())),
+    sheetName: cleanCellText(document.sheetName) || 'Project Proposals',
+    rowCount: rows.length,
+    totalCostMn,
+    totalCost: formatCostMillions(totalCostMn),
+    districts,
+    categories,
+    rows,
+  }
+}
+
+function cleanProposalDocuments(documents = []) {
+  return [...documents]
+    .map(cleanProposalDocument)
+    .filter((document) => document.rows.length)
+    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
+}
+
+function decodeXmlEntities(value = '') {
+  return String(value)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
+}
+
+function xmlAttr(attrs = '', name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = attrs.match(new RegExp(`${escaped}="([^"]*)"`))
+  return match ? decodeXmlEntities(match[1]) : ''
+}
+
+function textFromXmlParts(xml = '') {
+  const values = []
+  xml.replace(/<t\b[^>]*>([\s\S]*?)<\/t>/g, (_, text) => {
+    values.push(decodeXmlEntities(text))
+    return ''
+  })
+  return values.join('')
+}
+
+function columnIndexFromCellRef(ref = '') {
+  const letters = String(ref).match(/^[A-Z]+/i)?.[0]?.toUpperCase() || 'A'
+  return [...letters].reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1
+}
+
+function readWorkbookXmlFiles(buffer) {
+  const decoder = new TextDecoder('utf-8')
+  const files = unzipSync(new Uint8Array(buffer))
+  return (name) => (files[name] ? decoder.decode(files[name]) : '')
+}
+
+function readSharedStringsXml(xml = '') {
+  const sharedStrings = []
+  xml.replace(/<si\b[^>]*>([\s\S]*?)<\/si>/g, (_, body) => {
+    sharedStrings.push(textFromXmlParts(body))
+    return ''
+  })
+  return sharedStrings
+}
+
+function readWorkbookSheets(readFile) {
+  const workbookXml = readFile('xl/workbook.xml')
+  const relsXml = readFile('xl/_rels/workbook.xml.rels')
+  const relTargets = new Map()
+  relsXml.replace(/<Relationship\b([^>]*)\/?>/g, (_, attrs) => {
+    const id = xmlAttr(attrs, 'Id')
+    const target = xmlAttr(attrs, 'Target')
+    if (id && target) relTargets.set(id, target)
+    return ''
+  })
+
+  const sheets = []
+  workbookXml.replace(/<sheet\b([^>]*)\/?>/g, (_, attrs) => {
+    const name = xmlAttr(attrs, 'name')
+    const relationId = xmlAttr(attrs, 'r:id')
+    const target = relTargets.get(relationId) || ''
+    if (!target) return ''
+    const normalizedTarget = target.startsWith('/') ? target.slice(1) : target
+    sheets.push({
+      name,
+      path: normalizedTarget.startsWith('xl/') ? normalizedTarget : `xl/${normalizedTarget}`,
+    })
+    return ''
+  })
+  return sheets
+}
+
+function parseWorksheetRows(xml = '', sharedStrings = []) {
+  const rows = []
+  xml.replace(/<row\b([^>]*)>([\s\S]*?)<\/row>/g, (_, rowAttrs, rowBody) => {
+    const rowNumber = Number(xmlAttr(rowAttrs, 'r')) || rows.length + 1
+    const row = []
+    rowBody.replace(/<c\b([^>]*)(?:>([\s\S]*?)<\/c>|\/>)/g, (cellMatch, cellAttrs, cellBody = '') => {
+      void cellMatch
+      const cellRef = xmlAttr(cellAttrs, 'r')
+      const colIndex = columnIndexFromCellRef(cellRef)
+      const type = xmlAttr(cellAttrs, 't')
+      const rawValue = cellBody.match(/<v\b[^>]*>([\s\S]*?)<\/v>/)?.[1] || ''
+      let value = ''
+
+      if (type === 's') {
+        value = sharedStrings[Number(rawValue)] || ''
+      } else if (type === 'inlineStr') {
+        value = textFromXmlParts(cellBody)
+      } else if (rawValue) {
+        value = decodeXmlEntities(rawValue)
+      }
+
+      row[colIndex] = value
+      return ''
+    })
+    rows[rowNumber - 1] = row
+    return ''
+  })
+
+  return rows
+    .filter(Boolean)
+    .map((row) => {
+      const lastIndex = row.reduce((last, value, index) => (value == null ? last : index), 0)
+      return Array.from({ length: lastIndex + 1 }, (_, index) => row[index] ?? '')
+    })
+}
+
+async function readProposalWorkbookRows(file) {
+  const buffer = await file.arrayBuffer()
+  const readFile = readWorkbookXmlFiles(buffer)
+  const sharedStrings = readSharedStringsXml(readFile('xl/sharedStrings.xml'))
+  const sheets = readWorkbookSheets(readFile)
+  const proposalSheet = sheets.find((sheet) => /proposal/i.test(sheet.name)) || sheets[0]
+  if (!proposalSheet) throw new Error('No worksheet found in this Excel file.')
+  const rows = parseWorksheetRows(readFile(proposalSheet.path), sharedStrings)
+  return { rows, sheetName: proposalSheet.name || 'Project Proposals' }
+}
+
+async function parseProposalWorkbook(file) {
+  const { rows, sheetName } = await readProposalWorkbookRows(file)
+  const headerIndex = findProposalHeaderIndex(rows)
+  if (headerIndex < 0) {
+    throw new Error('Could not find proposal headers. The file must include Description, District, and Cost columns.')
+  }
+  const headers = rows[headerIndex].map(cleanCellText)
+  const columnIndexes = Object.fromEntries(
+    Object.keys(PROPOSAL_HEADER_ALIASES).map((field) => [field, getProposalColumnIndex(headers, field)]),
+  )
+  const required = ['description', 'district', 'costMn']
+  const missing = required.filter((field) => columnIndexes[field] < 0)
+  if (missing.length) throw new Error(`Missing required proposal column: ${missing.join(', ')}`)
+
+  const uploadedAt = new Date()
+  const id = proposalDocumentId(file.name)
+  const proposalRows = rows
+    .slice(headerIndex + 1)
+    .map((row, index) => {
+      const readField = (field) => {
+        const col = columnIndexes[field]
+        return col >= 0 ? row[col] : ''
+      }
+      return cleanProposalRow(
+        {
+          id: `${id}-row-${String(index + 1).padStart(4, '0')}`,
+          serial: readField('serial'),
+          description: readField('description'),
+          district: readField('district'),
+          category: readField('category'),
+          phase: readField('phase'),
+          costText: readField('costMn'),
+          executingAgency: readField('executingAgency'),
+          status: readField('status'),
+          submittedBy: readField('submittedBy'),
+          submittedAt: readField('submittedAt'),
+          piuForwardedBy: readField('piuForwardedBy'),
+          piuForwardedAt: readField('piuForwardedAt'),
+          pscReviewedBy: readField('pscReviewedBy'),
+          pscReviewedAt: readField('pscReviewedAt'),
+          rejectionReason: readField('rejectionReason'),
+          projectId: readField('projectId'),
+          sourceRemarks: readField('sourceRemarks'),
+          assessedByEngr: readField('assessedByEngr'),
+          recommendation: readField('recommendation'),
+          remarksComd: readField('remarksComd'),
+        },
+        index,
+        id,
+      )
+    })
+    .filter((row) => row.description || row.district || row.costMn)
+
+  if (!proposalRows.length) throw new Error('No proposal rows found in this workbook.')
+
+  return cleanProposalDocument({
+    id,
+    title: file.name.replace(/\.[^.]+$/, ''),
+    fileName: file.name,
+    sheetName,
+    uploadedAt: uploadedAt.toISOString(),
+    uploadedLabel: proposalUploadLabel(uploadedAt),
+    rows: proposalRows,
+  })
 }
 
 function mapKey(value) {
@@ -461,6 +794,7 @@ function normalizeDataset(raw) {
       districts: raw.districts || [],
       projects,
       media: raw.media || [],
+      proposalDocuments: cleanProposalDocuments(raw.proposalDocuments || raw.proposals || []),
       database: raw,
     }
   }
@@ -468,6 +802,7 @@ function normalizeDataset(raw) {
   return {
     ...raw,
     projects: (raw?.projects || []).map(cleanProject),
+    proposalDocuments: cleanProposalDocuments(raw?.proposalDocuments || raw?.proposals || []),
   }
 }
 
@@ -596,11 +931,17 @@ function collectDistrictCatalog(divisions = [], projects = []) {
   )
 }
 
-function createDashboardSnapshot(projects, phases, divisions, baseData = {}) {
+function createDashboardSnapshot(projects, phases, divisions, baseData = {}, proposalDocuments = null) {
   // This snapshot is the single shape used for local cache and server sync.
   const cleanedProjects = serializeProjects(projects.map(cleanProject))
   const cleanedPhases = cleanPhaseCatalog(phases, cleanedProjects)
   const cleanedDivisions = cleanDivisionCatalog(divisions, cleanedProjects)
+  const cleanedProposalDocuments = cleanProposalDocuments(
+    proposalDocuments ??
+      baseData.proposalDocuments ??
+      baseData.database?.proposalDocuments ??
+      [],
+  )
   const media = cleanedProjects.flatMap((project) => project.media || [])
   const budgetMn = cleanedProjects.reduce((sum, project) => sum + parseCostToMillions(project.cost), 0)
 
@@ -629,6 +970,7 @@ function createDashboardSnapshot(projects, phases, divisions, baseData = {}) {
     districts: collectDistrictCatalog(cleanedDivisions, cleanedProjects),
     projects: cleanedProjects,
     media,
+    proposalDocuments: cleanedProposalDocuments,
     settings: {
       adminPassword:
         baseData.settings?.adminPassword ||
@@ -645,8 +987,8 @@ function createDashboardSnapshot(projects, phases, divisions, baseData = {}) {
   }
 }
 
-function serializeDashboardState(projects, phases, divisions, baseData = {}) {
-  return createDashboardSnapshot(projects, phases, divisions, baseData)
+function serializeDashboardState(projects, phases, divisions, baseData = {}, proposalDocuments = null) {
+  return createDashboardSnapshot(projects, phases, divisions, baseData, proposalDocuments)
 }
 
 function readSavedDashboardState(dataset, options = {}) {
@@ -657,6 +999,7 @@ function readSavedDashboardState(dataset, options = {}) {
       projects: dataset.projects || [],
       phases: cleanPhaseCatalog(dataset.phases, dataset.projects),
       divisions: cleanDivisionCatalog(dataset.divisions, dataset.projects),
+      proposalDocuments: cleanProposalDocuments(dataset.proposalDocuments || []),
     }
   }
 
@@ -669,6 +1012,7 @@ function readSavedDashboardState(dataset, options = {}) {
         projects,
         phases: cleanPhaseCatalog(dataset.phases, projects),
         divisions: cleanDivisionCatalog(dataset.divisions, projects),
+        proposalDocuments: cleanProposalDocuments(dataset.proposalDocuments || []),
       }
     }
     const projects = (parsed.projects || dataset.projects || []).map(cleanProject)
@@ -676,6 +1020,7 @@ function readSavedDashboardState(dataset, options = {}) {
       projects,
       phases: cleanPhaseCatalog(parsed.phases || dataset.phases, projects),
       divisions: cleanDivisionCatalog(parsed.divisions || dataset.divisions, projects),
+      proposalDocuments: cleanProposalDocuments(parsed.proposalDocuments || dataset.proposalDocuments || []),
     }
   }
 
@@ -687,6 +1032,7 @@ function readSavedDashboardState(dataset, options = {}) {
       projects,
       phases: cleanPhaseCatalog(dataset.phases, projects),
       divisions: cleanDivisionCatalog(dataset.divisions, projects),
+      proposalDocuments: cleanProposalDocuments(dataset.proposalDocuments || []),
     }
   }
 
@@ -694,6 +1040,7 @@ function readSavedDashboardState(dataset, options = {}) {
     projects: dataset.projects || [],
     phases: cleanPhaseCatalog(dataset.phases, dataset.projects),
     divisions: cleanDivisionCatalog(dataset.divisions, dataset.projects),
+    proposalDocuments: cleanProposalDocuments(dataset.proposalDocuments || []),
   }
 }
 
@@ -3401,6 +3748,400 @@ function AdminPanel({
   )
 }
 
+function ProposalReviewPanel({
+  documents,
+  selectedDocumentId,
+  onSelectDocument,
+  onUploadDocument,
+  onSaveDocument,
+  adminAuthed,
+  onRequestAdmin,
+  notify,
+}) {
+  const fileInputRef = useRef(null)
+  const selectedDocument = documents.find((document) => document.id === selectedDocumentId) || documents[0] || null
+  const [draftDocument, setDraftDocument] = useState(() =>
+    selectedDocument ? cleanProposalDocument(selectedDocument) : null,
+  )
+  const [query, setQuery] = useState('')
+  const [districtFilter, setDistrictFilter] = useState('All')
+  const [categoryFilter, setCategoryFilter] = useState('All')
+  const [recommendationFilter, setRecommendationFilter] = useState('All')
+  const [uploading, setUploading] = useState(false)
+
+  const rows = useMemo(() => draftDocument?.rows || [], [draftDocument])
+  const summary = useMemo(() => {
+    const yes = rows.filter((row) => row.recommendation === 'Yes').length
+    const no = rows.filter((row) => row.recommendation === 'No').length
+    const assessed = rows.filter((row) => row.assessedByEngr || row.recommendation || row.remarksComd).length
+    return {
+      total: rows.length,
+      costMn: rows.reduce((sum, row) => sum + (Number(row.costMn) || 0), 0),
+      districts: unique(rows.map((row) => row.district)).length,
+      categories: unique(rows.map((row) => row.category)).length,
+      yes,
+      no,
+      pending: Math.max(rows.length - assessed, 0),
+      assessed,
+    }
+  }, [rows])
+
+  const districtOptions = useMemo(() => unique(rows.map((row) => row.district)), [rows])
+  const categoryOptions = useMemo(() => unique(rows.map((row) => row.category)), [rows])
+  const selectedSerialized = useMemo(
+    () => JSON.stringify(cleanProposalDocument(selectedDocument || {}).rows || []),
+    [selectedDocument],
+  )
+  const draftSerialized = useMemo(
+    () => JSON.stringify(cleanProposalDocument(draftDocument || {}).rows || []),
+    [draftDocument],
+  )
+  const hasUnsavedChanges = Boolean(selectedDocument && draftDocument && selectedSerialized !== draftSerialized)
+
+  const filteredRows = useMemo(() => {
+    const search = query.trim().toLowerCase()
+    return rows.filter((row) => {
+      const matchesSearch = !search || [
+        row.description,
+        row.district,
+        row.category,
+        row.executingAgency,
+        row.submittedBy,
+        row.sourceRemarks,
+        row.assessedByEngr,
+        row.remarksComd,
+      ].some((value) => String(value || '').toLowerCase().includes(search))
+      const matchesDistrict = districtFilter === 'All' || row.district === districtFilter
+      const matchesCategory = categoryFilter === 'All' || row.category === categoryFilter
+      const matchesRecommendation =
+        recommendationFilter === 'All' ||
+        (recommendationFilter === 'Unreviewed'
+          ? !row.recommendation && !row.assessedByEngr && !row.remarksComd
+          : row.recommendation === recommendationFilter)
+      return matchesSearch && matchesDistrict && matchesCategory && matchesRecommendation
+    })
+  }, [categoryFilter, districtFilter, query, recommendationFilter, rows])
+
+  async function handleUpload(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!adminAuthed) {
+      onRequestAdmin()
+      notify('Unlock required', 'Unlock admin access before uploading proposal documents.', 'info')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const document = await parseProposalWorkbook(file)
+      onUploadDocument(document)
+    } catch (error) {
+      notify('Proposal upload failed', error.message || 'The workbook could not be read.', 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function updateRow(rowId, field, value) {
+    if (!adminAuthed) {
+      onRequestAdmin()
+      return
+    }
+    setDraftDocument((current) => {
+      if (!current) return current
+      return cleanProposalDocument({
+        ...current,
+        rows: current.rows.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)),
+      })
+    })
+  }
+
+  function saveDraft() {
+    if (!draftDocument || !adminAuthed) {
+      onRequestAdmin()
+      return
+    }
+    onSaveDocument(draftDocument)
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="card overflow-hidden p-4 sm:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">
+              E&E of P3 projs
+            </span>
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+              Proposal evaluation desk
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              Upload each day&apos;s proposal workbook, keep the dated history, and record engineering assessment, recommendation, and command remarks.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!adminAuthed ? (
+              <button type="button" onClick={onRequestAdmin} className="btn-secondary">
+                <LockKeyhole size={15} />
+                Unlock to edit
+              </button>
+            ) : null}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleUpload}
+            />
+            <button
+              type="button"
+              onClick={() => (adminAuthed ? fileInputRef.current?.click() : onRequestAdmin())}
+              disabled={uploading}
+              className="btn-primary"
+            >
+              {uploading ? <RefreshCw size={15} className="animate-spin" /> : <Upload size={15} />}
+              {uploading ? 'Reading file' : 'Upload proposal file'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="card h-fit overflow-hidden p-3">
+          <div className="flex items-center justify-between gap-2 px-1 pb-3">
+            <div>
+              <p className="form-label">Upload history</p>
+              <p className="text-sm font-semibold text-slate-500">{documents.length} document{documents.length === 1 ? '' : 's'}</p>
+            </div>
+            <CalendarDays size={18} className="text-emerald-700" />
+          </div>
+          <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
+            {documents.length ? documents.map((document) => {
+              const active = document.id === selectedDocument?.id
+              return (
+                <button
+                  key={document.id}
+                  type="button"
+                  onClick={() => onSelectDocument(document.id)}
+                  className={`w-full rounded-xl border p-3 text-left transition ${
+                    active
+                      ? 'border-emerald-300 bg-emerald-50 shadow-sm shadow-emerald-900/5'
+                      : 'border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/40'
+                  }`}
+                >
+                  <p className="line-clamp-1 text-sm font-extrabold text-slate-900">{document.title}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">{document.uploadedLabel}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">
+                      {document.rowCount} proposals
+                    </span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-500 ring-1 ring-slate-100">
+                      {formatCostMillions(document.totalCostMn)}
+                    </span>
+                  </div>
+                </button>
+              )
+            }) : (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center">
+                <FileJson className="mx-auto text-slate-300" size={28} />
+                <p className="mt-2 text-sm font-semibold text-slate-500">No proposal document uploaded yet.</p>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div className="min-w-0 space-y-4">
+          {!draftDocument ? (
+            <div className="card grid min-h-[360px] place-items-center p-8 text-center">
+              <div>
+                <span className="icon-box mx-auto h-12 w-12 rounded-xl">
+                  <Upload size={22} />
+                </span>
+                <h3 className="mt-4 text-xl font-bold text-slate-900">Upload the first proposal workbook</h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                  The system will read the proposal rows, calculate the estimate, and add review columns for E&E tracking.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                {[
+                  ['Proposals', summary.total],
+                  ['Estimated cost', formatCostMillions(summary.costMn)],
+                  ['Districts', summary.districts],
+                  ['Recommended', summary.yes],
+                  ['Pending review', summary.pending],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-card">
+                    <p className="form-label">{label}</p>
+                    <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="card p-4">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                  <div className="min-w-0">
+                    <p className="form-label">Current document</p>
+                    <h3 className="mt-1 truncate text-xl font-black text-slate-950">{draftDocument.title}</h3>
+                    <p className="mt-1 text-sm font-semibold text-slate-400">
+                      {draftDocument.uploadedLabel} · {filteredRows.length} of {rows.length} rows shown
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:min-w-[760px]">
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      className="form-input h-10"
+                      placeholder="Search proposals"
+                    />
+                    <select value={districtFilter} onChange={(event) => setDistrictFilter(event.target.value)} className="form-input h-10">
+                      <option value="All">All districts</option>
+                      {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
+                    </select>
+                    <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="form-input h-10">
+                      <option value="All">All categories</option>
+                      {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+                    </select>
+                    <select
+                      value={recommendationFilter}
+                      onChange={(event) => setRecommendationFilter(event.target.value)}
+                      className="form-input h-10"
+                    >
+                      <option value="All">All recommendations</option>
+                      <option value="Unreviewed">Unreviewed</option>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-2 text-xs font-bold">
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 ring-1 ring-emerald-100">
+                      {summary.assessed} assessed
+                    </span>
+                    <span className="rounded-full bg-slate-50 px-3 py-1 text-slate-500 ring-1 ring-slate-100">
+                      {summary.no} marked no
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {hasUnsavedChanges ? (
+                      <button type="button" onClick={() => setDraftDocument(cleanProposalDocument(selectedDocument))} className="btn-secondary">
+                        <RotateCcw size={15} />
+                        Discard
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={saveDraft}
+                      disabled={!hasUnsavedChanges || !adminAuthed}
+                      className="btn-primary"
+                      title={!adminAuthed ? 'Unlock admin access to save' : 'Save proposal assessment'}
+                    >
+                      <Save size={15} />
+                      {hasUnsavedChanges ? 'Save assessment' : 'Saved'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-[1380px] divide-y divide-slate-100 text-left text-sm">
+                    <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-400">
+                      <tr>
+                        <th className="w-14 px-4 py-3">#</th>
+                        <th className="w-[320px] px-4 py-3">Proposal</th>
+                        <th className="px-4 py-3">District</th>
+                        <th className="px-4 py-3">Category</th>
+                        <th className="px-4 py-3">Cost</th>
+                        <th className="px-4 py-3">Agency</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="w-[220px] px-4 py-3">Asst by Engr</th>
+                        <th className="w-[130px] px-4 py-3">Recommendation</th>
+                        <th className="w-[260px] px-4 py-3">Remarks Comd</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredRows.map((row) => (
+                        <tr key={row.id} className="align-top hover:bg-emerald-50/30">
+                          <td className="px-4 py-3 font-bold text-slate-400">{row.serial}</td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold leading-5 text-slate-900">{row.description || '-'}</p>
+                            {row.sourceRemarks ? (
+                              <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{row.sourceRemarks}</p>
+                            ) : null}
+                            <p className="mt-2 text-xs font-semibold text-slate-400">{row.submittedBy || 'Not submitted'} · {row.phase}</p>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-700">{row.district || '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                              {row.category || 'Other'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-black text-emerald-700">{formatCostMillions(row.costMn)}</td>
+                          <td className="px-4 py-3 font-semibold text-slate-600">{row.executingAgency || '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                              {row.status || 'Draft'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <select
+                              value={row.assessedByEngr}
+                              onChange={(event) => updateRow(row.id, 'assessedByEngr', event.target.value)}
+                              disabled={!adminAuthed}
+                              className="form-input h-10 text-xs"
+                            >
+                              <option value="">Select assessment</option>
+                              {ENGINEER_ASSESSMENT_OPTIONS.map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-3">
+                            <select
+                              value={row.recommendation}
+                              onChange={(event) => updateRow(row.id, 'recommendation', event.target.value)}
+                              disabled={!adminAuthed}
+                              className="form-input h-10 text-xs"
+                            >
+                              <option value="">Pending</option>
+                              {RECOMMENDATION_OPTIONS.map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-3">
+                            <textarea
+                              value={row.remarksComd}
+                              onChange={(event) => updateRow(row.id, 'remarksComd', event.target.value)}
+                              disabled={!adminAuthed}
+                              className="form-input min-h-[72px] resize-y text-xs leading-5"
+                              placeholder="Remarks"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {!filteredRows.length ? (
+                  <div className="grid min-h-[180px] place-items-center border-t border-slate-100 p-8 text-center">
+                    <p className="text-sm font-semibold text-slate-400">No proposals match the current filters.</p>
+                  </div>
+                ) : null}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function InsightsPanel({ projects, stats, phaseSelection }) {
   const divisionCounts = summarizeBy(projects, 'division')
   const districtCounts = summarizeBy(projects, 'district')
@@ -3515,6 +4256,8 @@ export default function App() {
   const [projects, setProjects] = useState([])
   const [phaseCatalog, setPhaseCatalog] = useState([])
   const [divisionCatalog, setDivisionCatalog] = useState([])
+  const [proposalDocuments, setProposalDocuments] = useState([])
+  const [selectedProposalDocumentId, setSelectedProposalDocumentId] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [phaseSelection, setPhaseSelection] = useState('Total')
   const [districtSelection, setDistrictSelection] = useState(DISTRICT_FILTER_ALL)
@@ -3540,6 +4283,7 @@ export default function App() {
   const [printRequested, setPrintRequested] = useState(false)
   const [printBusy, setPrintBusy] = useState(false)
   const [latestSavedReportStamp, setLatestSavedReportStamp] = useState('')
+  const [adminReturnTab, setAdminReturnTab] = useState('admin')
 
   const notify = useCallback((title, message = '', type = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -3623,10 +4367,11 @@ export default function App() {
     }
   }, [printReportReady, printRequested])
 
-  const openAdminEditor = useCallback((projectId) => {
+  const openAdminEditor = useCallback((projectId, returnTab = 'admin') => {
     if (projectId) setSelectedId(projectId)
+    setAdminReturnTab(returnTab)
     if (adminAuthed) {
-      setActiveTab('admin')
+      setActiveTab(returnTab)
       return
     }
     setAdminOpen(true)
@@ -3658,6 +4403,8 @@ export default function App() {
         setProjects(hydratedProjects)
         setPhaseCatalog(savedState.phases)
         setDivisionCatalog(savedState.divisions)
+        setProposalDocuments(savedState.proposalDocuments)
+        setSelectedProposalDocumentId(savedState.proposalDocuments[0]?.id || '')
         setSelectedId(hydratedProjects[0]?.id || '')
         setSyncAvailable(canSync)
         setSyncState((current) => ({
@@ -3688,7 +4435,13 @@ export default function App() {
           localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString())
           localStorage.setItem(
             STORAGE_KEY,
-            JSON.stringify(serializeDashboardState(hydratedProjects, savedState.phases, savedState.divisions, dataset)),
+            JSON.stringify(serializeDashboardState(
+              hydratedProjects,
+              savedState.phases,
+              savedState.divisions,
+              dataset,
+              savedState.proposalDocuments,
+            )),
           )
         }
       } catch (error) {
@@ -3835,9 +4588,16 @@ export default function App() {
     nextPhases = phaseCatalog,
     nextDivisions = divisionCatalog,
     dataContext = baseData,
+    nextProposalDocuments = proposalDocuments,
   ) {
     // Local storage is the offline meeting cache and also holds pending edits.
-    const snapshot = serializeDashboardState(nextProjects, nextPhases, nextDivisions, dataContext || {})
+    const snapshot = serializeDashboardState(
+      nextProjects,
+      nextPhases,
+      nextDivisions,
+      dataContext || {},
+      nextProposalDocuments,
+    )
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
     return snapshot
   }
@@ -3882,7 +4642,9 @@ export default function App() {
     })
     if (result.data) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data))
-      setBaseData(normalizeDataset(result.data))
+      const normalized = normalizeDataset(result.data)
+      setBaseData(normalized)
+      setProposalDocuments(normalized.proposalDocuments || [])
     }
     return result.data
   }
@@ -3987,8 +4749,16 @@ export default function App() {
       setProjects(hydratedProjects)
       setPhaseCatalog(remoteDataset.phases)
       setDivisionCatalog(remoteDataset.divisions)
+      setProposalDocuments(remoteDataset.proposalDocuments || [])
+      setSelectedProposalDocumentId(remoteDataset.proposalDocuments?.[0]?.id || '')
       setSelectedId(hydratedProjects[0]?.id || '')
-      persistState(hydratedProjects, remoteDataset.phases, remoteDataset.divisions, remoteDataset)
+      persistState(
+        hydratedProjects,
+        remoteDataset.phases,
+        remoteDataset.divisions,
+        remoteDataset,
+        remoteDataset.proposalDocuments || [],
+      )
 
       setSyncState((current) => ({
         ...current,
@@ -4103,6 +4873,40 @@ export default function App() {
     setDivisionCatalog(nextDivisions)
     const snapshot = persistState(cleanedProjects, nextPhases, nextDivisions)
     queueSnapshotSync(snapshot, 'Project data synced')
+  }
+
+  function saveProposalDocuments(nextDocuments, successTitle = 'Proposal data synced') {
+    const cleanedDocuments = cleanProposalDocuments(nextDocuments)
+    setProposalDocuments(cleanedDocuments)
+    if (!cleanedDocuments.some((document) => document.id === selectedProposalDocumentId)) {
+      setSelectedProposalDocumentId(cleanedDocuments[0]?.id || '')
+    }
+    const snapshot = persistState(projects, phaseCatalog, divisionCatalog, baseData, cleanedDocuments)
+    queueSnapshotSync(snapshot, successTitle)
+  }
+
+  function addProposalDocument(document) {
+    const cleanedDocument = cleanProposalDocument(document)
+    const nextDocuments = cleanProposalDocuments([
+      cleanedDocument,
+      ...proposalDocuments.filter((item) => item.id !== cleanedDocument.id),
+    ])
+    setSelectedProposalDocumentId(cleanedDocument.id)
+    saveProposalDocuments(nextDocuments, 'Proposal document synced')
+    notify(
+      'Proposal document uploaded',
+      `${cleanedDocument.rowCount} proposals and ${formatCostMillions(cleanedDocument.totalCostMn)} captured.`,
+      'success',
+    )
+  }
+
+  function updateProposalDocument(document) {
+    const cleanedDocument = cleanProposalDocument(document)
+    const nextDocuments = proposalDocuments.map((item) =>
+      item.id === cleanedDocument.id ? cleanedDocument : item,
+    )
+    saveProposalDocuments(nextDocuments, 'Proposal assessment synced')
+    notify('Assessment saved', `${cleanedDocument.title} updated.`, 'success')
   }
 
   function resetProjects() {
@@ -4539,7 +5343,19 @@ export default function App() {
           />
         ) : null}
 
-        {visibleActiveTab === 'ee-p3' ? <section className="min-h-[55vh] rounded-2xl bg-white shadow-card" /> : null}
+        {visibleActiveTab === 'ee-p3' ? (
+          <ProposalReviewPanel
+            key={selectedProposalDocumentId || 'proposal-review'}
+            documents={proposalDocuments}
+            selectedDocumentId={selectedProposalDocumentId}
+            onSelectDocument={setSelectedProposalDocumentId}
+            onUploadDocument={addProposalDocument}
+            onSaveDocument={updateProposalDocument}
+            adminAuthed={adminAuthed}
+            onRequestAdmin={() => openAdminEditor('', 'ee-p3')}
+            notify={notify}
+          />
+        ) : null}
 
         {visibleActiveTab === 'admin' && adminAuthed ? (
           <AdminPanel
@@ -4565,6 +5381,7 @@ export default function App() {
             onLock={() => {
               setAdminAuthed(false)
               setAdminSessionPassword('')
+              setAdminReturnTab('admin')
               setActiveTab('insights')
               notify('Editor locked', 'Admin editing is disabled.', 'info')
             }}
@@ -4593,7 +5410,7 @@ export default function App() {
         onUnlock={(password) => {
           setAdminSessionPassword(password)
           setAdminOpen(false)
-          setActiveTab('admin')
+          setActiveTab(adminReturnTab || 'admin')
         }}
         projects={projects}
         selectedProject={selectedProject}
