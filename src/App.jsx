@@ -3907,50 +3907,7 @@ function ProposalReviewPanel({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="card h-fit overflow-hidden p-3">
-          <div className="flex items-center justify-between gap-2 px-1 pb-3">
-            <div>
-              <p className="form-label">Upload history</p>
-              <p className="text-sm font-semibold text-slate-500">{documents.length} document{documents.length === 1 ? '' : 's'}</p>
-            </div>
-            <CalendarDays size={18} className="text-emerald-700" />
-          </div>
-          <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
-            {documents.length ? documents.map((document) => {
-              const active = document.id === selectedDocument?.id
-              return (
-                <button
-                  key={document.id}
-                  type="button"
-                  onClick={() => onSelectDocument(document.id)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    active
-                      ? 'border-emerald-300 bg-emerald-50 shadow-sm shadow-emerald-900/5'
-                      : 'border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/40'
-                  }`}
-                >
-                  <p className="line-clamp-1 text-sm font-extrabold text-slate-900">{document.title}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-400">{document.uploadedLabel}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">
-                      {document.rowCount} proposals
-                    </span>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-500 ring-1 ring-slate-100">
-                      {formatCostMillions(document.totalCostMn)}
-                    </span>
-                  </div>
-                </button>
-              )
-            }) : (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center">
-                <FileJson className="mx-auto text-slate-300" size={28} />
-                <p className="mt-2 text-sm font-semibold text-slate-500">No proposal document uploaded yet.</p>
-              </div>
-            )}
-          </div>
-        </aside>
-
+      <div className="space-y-4">
         <div className="min-w-0 space-y-4">
           {!draftDocument ? (
             <div className="card grid min-h-[360px] place-items-center p-8 text-center">
@@ -3987,10 +3944,22 @@ function ProposalReviewPanel({
                     <p className="form-label">Current document</p>
                     <h3 className="mt-1 truncate text-xl font-black text-slate-950">{draftDocument.title}</h3>
                     <p className="mt-1 text-sm font-semibold text-slate-400">
-                      {draftDocument.uploadedLabel} · {filteredRows.length} of {rows.length} rows shown
+                      {draftDocument.uploadedLabel} - {filteredRows.length} of {rows.length} rows shown
                     </p>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:min-w-[760px]">
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 xl:min-w-[980px]">
+                    <select
+                      value={selectedDocument?.id || ''}
+                      onChange={(event) => onSelectDocument(event.target.value)}
+                      className="form-input h-10"
+                      title="Select uploaded proposal document"
+                    >
+                      {documents.map((document) => (
+                        <option key={document.id} value={document.id}>
+                          {document.title} - {document.uploadedLabel}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
