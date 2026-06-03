@@ -36,7 +36,7 @@ import {
   Video,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const FALLBACK_ADMIN_PASSWORD = ''
 const STORAGE_KEY = 'bsdi-dashboard-state-v1'
@@ -4049,81 +4049,91 @@ function ProposalReviewPanel({
 
               <div className="card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="min-w-[1380px] divide-y divide-slate-100 text-left text-sm">
+                  <table className="w-full table-fixed divide-y divide-slate-100 text-left text-sm">
                     <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-400">
                       <tr>
-                        <th className="w-14 px-4 py-3">#</th>
-                        <th className="w-[320px] px-4 py-3">Proposal</th>
-                        <th className="px-4 py-3">District</th>
-                        <th className="px-4 py-3">Category</th>
-                        <th className="px-4 py-3">Cost</th>
-                        <th className="px-4 py-3">Agency</th>
-                        <th className="px-4 py-3">Status</th>
-                        <th className="w-[220px] px-4 py-3">Asst by Engr</th>
-                        <th className="w-[130px] px-4 py-3">Recommendation</th>
-                        <th className="w-[260px] px-4 py-3">Remarks Comd</th>
+                        <th className="w-[52px] px-4 py-3">#</th>
+                        <th className="w-[36%] px-4 py-3">Proposal</th>
+                        <th className="w-[11%] px-4 py-3">District</th>
+                        <th className="w-[12%] px-4 py-3">Category</th>
+                        <th className="w-[11%] px-4 py-3">Cost</th>
+                        <th className="w-[11%] px-4 py-3">Agency</th>
+                        <th className="w-[10%] px-4 py-3">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {filteredRows.map((row) => (
-                        <tr key={row.id} className="align-top hover:bg-emerald-50/30">
+                        <Fragment key={row.id}>
+                          <tr className="align-top hover:bg-emerald-50/30">
                           <td className="px-4 py-3 font-bold text-slate-400">{row.serial}</td>
                           <td className="px-4 py-3">
                             <p className="font-bold leading-5 text-slate-900">{row.description || '-'}</p>
                             {row.sourceRemarks ? (
                               <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{row.sourceRemarks}</p>
                             ) : null}
-                            <p className="mt-2 text-xs font-semibold text-slate-400">{row.submittedBy || 'Not submitted'} · {row.phase}</p>
+                            <p className="mt-2 text-xs font-semibold text-slate-400">{row.submittedBy || 'Not submitted'} - {row.phase}</p>
                           </td>
-                          <td className="px-4 py-3 font-semibold text-slate-700">{row.district || '-'}</td>
+                          <td className="break-words px-4 py-3 font-semibold text-slate-700">{row.district || '-'}</td>
                           <td className="px-4 py-3">
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                              {row.category || 'Other'}
+                            <span className="inline-flex max-w-full rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                              <span className="truncate">{row.category || 'Other'}</span>
                             </span>
                           </td>
-                          <td className="px-4 py-3 font-black text-emerald-700">{formatCostMillions(row.costMn)}</td>
-                          <td className="px-4 py-3 font-semibold text-slate-600">{row.executingAgency || '-'}</td>
+                          <td className="break-words px-4 py-3 font-black text-emerald-700">{formatCostMillions(row.costMn)}</td>
+                          <td className="break-words px-4 py-3 font-semibold text-slate-600">{row.executingAgency || '-'}</td>
                           <td className="px-4 py-3">
                             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
                               {row.status || 'Draft'}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
-                            <select
-                              value={row.assessedByEngr}
-                              onChange={(event) => updateRow(row.id, 'assessedByEngr', event.target.value)}
-                              disabled={!adminAuthed}
-                              className="form-input h-10 text-xs"
-                            >
-                              <option value="">Select assessment</option>
-                              {ENGINEER_ASSESSMENT_OPTIONS.map((option) => (
-                                <option key={option} value={option}>{option}</option>
-                              ))}
-                            </select>
+                          </tr>
+                          <tr className="bg-gradient-to-r from-emerald-50/60 via-white to-white">
+                          <td colSpan={7} className="px-4 pb-4 pt-0">
+                            <div className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm shadow-emerald-950/5">
+                              <div className="grid gap-3 lg:grid-cols-[minmax(220px,0.95fr)_160px_minmax(260px,1.2fr)]">
+                                <label className="min-w-0">
+                                  <span className="form-label mb-1 block">Asst by Engr</span>
+                                  <select
+                                    value={row.assessedByEngr}
+                                    onChange={(event) => updateRow(row.id, 'assessedByEngr', event.target.value)}
+                                    disabled={!adminAuthed}
+                                    className="form-input h-10 text-xs"
+                                  >
+                                    <option value="">Select assessment</option>
+                                    {ENGINEER_ASSESSMENT_OPTIONS.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  <span className="form-label mb-1 block">Recommendation</span>
+                                  <select
+                                    value={row.recommendation}
+                                    onChange={(event) => updateRow(row.id, 'recommendation', event.target.value)}
+                                    disabled={!adminAuthed}
+                                    className="form-input h-10 text-xs"
+                                  >
+                                    <option value="">Pending</option>
+                                    {RECOMMENDATION_OPTIONS.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="min-w-0">
+                                  <span className="form-label mb-1 block">Remarks Comd</span>
+                                  <textarea
+                                    value={row.remarksComd}
+                                    onChange={(event) => updateRow(row.id, 'remarksComd', event.target.value)}
+                                    disabled={!adminAuthed}
+                                    className="form-input min-h-[72px] resize-y text-xs leading-5"
+                                    placeholder="Remarks"
+                                  />
+                                </label>
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-4 py-3">
-                            <select
-                              value={row.recommendation}
-                              onChange={(event) => updateRow(row.id, 'recommendation', event.target.value)}
-                              disabled={!adminAuthed}
-                              className="form-input h-10 text-xs"
-                            >
-                              <option value="">Pending</option>
-                              {RECOMMENDATION_OPTIONS.map((option) => (
-                                <option key={option} value={option}>{option}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-4 py-3">
-                            <textarea
-                              value={row.remarksComd}
-                              onChange={(event) => updateRow(row.id, 'remarksComd', event.target.value)}
-                              disabled={!adminAuthed}
-                              className="form-input min-h-[72px] resize-y text-xs leading-5"
-                              placeholder="Remarks"
-                            />
-                          </td>
-                        </tr>
+                          </tr>
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
