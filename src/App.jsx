@@ -36,7 +36,7 @@ import {
   Video,
   X,
 } from 'lucide-react'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const FALLBACK_ADMIN_PASSWORD = ''
 const STORAGE_KEY = 'bsdi-dashboard-state-v1'
@@ -3865,24 +3865,47 @@ function ProposalReviewPanel({
     onSaveDocument(draftDocument)
   }
 
+  const reviewPercent = summary.total ? Math.round((summary.assessed / summary.total) * 100) : 0
+  const summaryCards = [
+    { label: 'Proposals', value: summary.total, detail: `${filteredRows.length} visible`, icon: TableProperties },
+    { label: 'Estimated cost', value: formatCostMillions(summary.costMn), detail: 'Total proposal value', icon: CircleDollarSign },
+    { label: 'Districts', value: summary.districts, detail: `${summary.categories} categories`, icon: MapPinned },
+    { label: 'Recommended', value: summary.yes, detail: `${summary.no} marked no`, icon: Check },
+    { label: 'Pending review', value: summary.pending, detail: `${reviewPercent}% assessed`, icon: Info },
+  ]
+
   return (
     <section className="space-y-4">
-      <div className="card overflow-hidden p-4 sm:p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="relative overflow-hidden rounded-[28px] border border-emerald-900/20 bg-gradient-to-br from-emerald-950 via-emerald-800 to-slate-950 p-4 text-white shadow-2xl shadow-emerald-950/20 sm:p-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
           <div className="min-w-0">
-            <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">
-              E&E of P3 projs
-            </span>
-            <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex rounded-full bg-white/12 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-50 ring-1 ring-white/15">
+                E&E of P3 projs
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-300/15 px-3 py-1 text-xs font-bold text-emerald-50 ring-1 ring-emerald-200/25">
+                <CalendarDays size={13} />
+                {documents.length} document{documents.length === 1 ? '' : 's'}
+              </span>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ${
+                hasUnsavedChanges
+                  ? 'bg-amber-300/15 text-amber-50 ring-amber-200/25'
+                  : 'bg-white/10 text-emerald-50 ring-white/15'
+              }`}>
+                <Save size={13} />
+                {hasUnsavedChanges ? 'Unsaved review' : 'Saved'}
+              </span>
+            </div>
+            <h2 className="mt-4 text-2xl font-black tracking-tight sm:text-4xl">
               Proposal evaluation desk
             </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Upload each day&apos;s proposal workbook, keep the dated history, and record engineering assessment, recommendation, and command remarks.
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-emerald-50/80">
+              Review uploaded P3 proposals by district, cost, assessment, recommendation, and command remarks.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             {!adminAuthed ? (
-              <button type="button" onClick={onRequestAdmin} className="btn-secondary">
+              <button type="button" onClick={onRequestAdmin} className="btn-secondary border-white/20 bg-white/10 text-white hover:bg-white/15">
                 <LockKeyhole size={15} />
                 Unlock to edit
               </button>
@@ -3898,9 +3921,9 @@ function ProposalReviewPanel({
               type="button"
               onClick={() => (adminAuthed ? fileInputRef.current?.click() : onRequestAdmin())}
               disabled={uploading}
-              className="btn-primary"
+              className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-emerald-900 shadow-lg shadow-emerald-950/20 transition hover:-translate-y-0.5 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {uploading ? <RefreshCw size={15} className="animate-spin" /> : <Upload size={15} />}
+              {uploading ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
               {uploading ? 'Reading file' : 'Upload proposal file'}
             </button>
           </div>
@@ -3924,34 +3947,36 @@ function ProposalReviewPanel({
           ) : (
             <>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                {[
-                  ['Proposals', summary.total],
-                  ['Estimated cost', formatCostMillions(summary.costMn)],
-                  ['Districts', summary.districts],
-                  ['Recommended', summary.yes],
-                  ['Pending review', summary.pending],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-card">
-                    <p className="form-label">{label}</p>
-                    <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
-                  </div>
-                ))}
+                {summaryCards.map((card) => {
+                  const Icon = card.icon
+                  return (
+                    <div
+                      key={card.label}
+                      className="group relative overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-white via-white to-emerald-50 p-4 shadow-card transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-950/10"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="form-label">{card.label}</p>
+                          <p className="mt-2 truncate text-2xl font-black text-slate-950">{card.value}</p>
+                          <p className="mt-1 text-xs font-bold text-emerald-700">{card.detail}</p>
+                        </div>
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-900/10">
+                          <Icon size={19} />
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
 
-              <div className="card p-4">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-                  <div className="min-w-0">
-                    <p className="form-label">Current document</p>
-                    <h3 className="mt-1 truncate text-xl font-black text-slate-950">{draftDocument.title}</h3>
-                    <p className="mt-1 text-sm font-semibold text-slate-400">
-                      {draftDocument.uploadedLabel} - {filteredRows.length} of {rows.length} rows shown
-                    </p>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 xl:min-w-[980px]">
+              <div className="card overflow-hidden p-0">
+                <div className="grid gap-4 border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 p-4 xl:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)_auto] xl:items-end">
+                  <label className="min-w-0">
+                    <span className="form-label mb-2 block">Proposal document</span>
                     <select
                       value={selectedDocument?.id || ''}
                       onChange={(event) => onSelectDocument(event.target.value)}
-                      className="form-input h-10"
+                      className="form-input h-11 font-bold"
                       title="Select uploaded proposal document"
                     >
                       {documents.map((document) => (
@@ -3960,44 +3985,50 @@ function ProposalReviewPanel({
                         </option>
                       ))}
                     </select>
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      className="form-input h-10"
-                      placeholder="Search proposals"
-                    />
-                    <select value={districtFilter} onChange={(event) => setDistrictFilter(event.target.value)} className="form-input h-10">
-                      <option value="All">All districts</option>
-                      {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
-                    </select>
-                    <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="form-input h-10">
-                      <option value="All">All categories</option>
-                      {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
-                    </select>
-                    <select
-                      value={recommendationFilter}
-                      onChange={(event) => setRecommendationFilter(event.target.value)}
-                      className="form-input h-10"
-                    >
-                      <option value="All">All recommendations</option>
-                      <option value="Unreviewed">Unreviewed</option>
-                      <option value="Yes">Yes</option>
-                      <option value="No">No</option>
-                    </select>
+                  </label>
+
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <label className="min-w-0 sm:col-span-2 xl:col-span-1">
+                      <span className="form-label mb-2 block">Search</span>
+                      <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        className="form-input h-11"
+                        placeholder="Search proposals"
+                      />
+                    </label>
+                    <label>
+                      <span className="form-label mb-2 block">District</span>
+                      <select value={districtFilter} onChange={(event) => setDistrictFilter(event.target.value)} className="form-input h-11">
+                        <option value="All">All districts</option>
+                        {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="form-label mb-2 block">Category</span>
+                      <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="form-input h-11">
+                        <option value="All">All categories</option>
+                        {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="form-label mb-2 block">Recommendation</span>
+                      <select
+                        value={recommendationFilter}
+                        onChange={(event) => setRecommendationFilter(event.target.value)}
+                        className="form-input h-11"
+                      >
+                        <option value="All">All recommendations</option>
+                        <option value="Unreviewed">Unreviewed</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </label>
                   </div>
-                </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap gap-2 text-xs font-bold">
-                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 ring-1 ring-emerald-100">
-                      {summary.assessed} assessed
-                    </span>
-                    <span className="rounded-full bg-slate-50 px-3 py-1 text-slate-500 ring-1 ring-slate-100">
-                      {summary.no} marked no
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+
+                  <div className="flex flex-wrap gap-2 xl:justify-end">
                     {hasUnsavedChanges ? (
-                      <button type="button" onClick={() => setDraftDocument(cleanProposalDocument(selectedDocument))} className="btn-secondary">
+                      <button type="button" onClick={() => setDraftDocument(cleanProposalDocument(selectedDocument))} className="btn-secondary h-11">
                         <RotateCcw size={15} />
                         Discard
                       </button>
@@ -4006,7 +4037,7 @@ function ProposalReviewPanel({
                       type="button"
                       onClick={saveDraft}
                       disabled={!hasUnsavedChanges || !adminAuthed}
-                      className="btn-primary"
+                      className="btn-primary h-11"
                       title={!adminAuthed ? 'Unlock admin access to save' : 'Save proposal assessment'}
                     >
                       <Save size={15} />
@@ -4014,98 +4045,163 @@ function ProposalReviewPanel({
                     </button>
                   </div>
                 </div>
+                <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-xl font-black text-slate-950">{draftDocument.title}</h3>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
+                        {draftDocument.uploadedLabel}
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-700" style={{ width: `${reviewPercent}%` }} />
+                    </div>
+                    <p className="mt-2 text-xs font-bold text-slate-400">
+                      {filteredRows.length} of {rows.length} rows shown - {summary.assessed} assessed - {summary.pending} pending
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs font-bold">
+                    <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-100">
+                      {summary.yes} yes
+                    </span>
+                    <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-700 ring-1 ring-rose-100">
+                      {summary.no} no
+                    </span>
+                    <span className="rounded-full bg-slate-50 px-3 py-1.5 text-slate-500 ring-1 ring-slate-100">
+                      {reviewPercent}% assessed
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="card overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full table-fixed divide-y divide-slate-100 text-left text-sm">
-                    <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-400">
-                      <tr>
-                        <th className="w-[52px] px-4 py-3">#</th>
-                        <th className="w-[36%] px-4 py-3">Proposal</th>
-                        <th className="w-[11%] px-4 py-3">District</th>
-                        <th className="w-[12%] px-4 py-3">Category</th>
-                        <th className="w-[11%] px-4 py-3">Cost</th>
-                        <th className="w-[11%] px-4 py-3">Agency</th>
-                        <th className="w-[10%] px-4 py-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {filteredRows.map((row) => (
-                        <Fragment key={row.id}>
-                          <tr className="align-top hover:bg-emerald-50/30">
-                          <td className="px-4 py-3 font-bold text-slate-400">{row.serial}</td>
-                          <td className="px-4 py-3">
-                            <p className="font-bold leading-5 text-slate-900">{row.description || '-'}</p>
-                            {row.sourceRemarks ? (
-                              <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{row.sourceRemarks}</p>
-                            ) : null}
-                            <p className="mt-2 text-xs font-semibold text-slate-400">{row.submittedBy || 'Not submitted'} - {row.phase}</p>
-                          </td>
-                          <td className="break-words px-4 py-3 font-semibold text-slate-700">{row.district || '-'}</td>
-                          <td className="px-4 py-3">
-                            <span className="inline-flex max-w-full rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                              <span className="truncate">{row.category || 'Other'}</span>
-                            </span>
-                          </td>
-                          <td className="break-words px-4 py-3 font-black text-emerald-700">{formatCostMillions(row.costMn)}</td>
-                          <td className="break-words px-4 py-3 font-semibold text-slate-600">{row.executingAgency || '-'}</td>
-                          <td className="px-4 py-3">
-                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
-                              {row.status || 'Draft'}
-                            </span>
-                          </td>
-                          </tr>
-                          <tr className="bg-gradient-to-r from-emerald-50/60 via-white to-white">
-                          <td colSpan={7} className="px-4 pb-4 pt-0">
-                            <div className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm shadow-emerald-950/5">
-                              <div className="grid gap-3 lg:grid-cols-[minmax(220px,0.95fr)_160px_minmax(260px,1.2fr)]">
-                                <label className="min-w-0">
-                                  <span className="form-label mb-1 block">Asst by Engr</span>
-                                  <select
-                                    value={row.assessedByEngr}
-                                    onChange={(event) => updateRow(row.id, 'assessedByEngr', event.target.value)}
-                                    disabled={!adminAuthed}
-                                    className="form-input h-10 text-xs"
-                                  >
-                                    <option value="">Select assessment</option>
-                                    {ENGINEER_ASSESSMENT_OPTIONS.map((option) => (
-                                      <option key={option} value={option}>{option}</option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label>
-                                  <span className="form-label mb-1 block">Recommendation</span>
-                                  <select
-                                    value={row.recommendation}
-                                    onChange={(event) => updateRow(row.id, 'recommendation', event.target.value)}
-                                    disabled={!adminAuthed}
-                                    className="form-input h-10 text-xs"
-                                  >
-                                    <option value="">Pending</option>
-                                    {RECOMMENDATION_OPTIONS.map((option) => (
-                                      <option key={option} value={option}>{option}</option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label className="min-w-0">
-                                  <span className="form-label mb-1 block">Remarks Comd</span>
-                                  <textarea
-                                    value={row.remarksComd}
-                                    onChange={(event) => updateRow(row.id, 'remarksComd', event.target.value)}
-                                    disabled={!adminAuthed}
-                                    className="form-input min-h-[72px] resize-y text-xs leading-5"
-                                    placeholder="Remarks"
-                                  />
-                                </label>
+                <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="form-label">Proposal register</p>
+                    <h3 className="mt-1 text-lg font-black text-slate-950">
+                      {filteredRows.length} proposal{filteredRows.length === 1 ? '' : 's'} in view
+                    </h3>
+                  </div>
+                  <span className="w-fit rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-100">
+                    Sorted from uploaded workbook
+                  </span>
+                </div>
+
+                <div className="divide-y divide-slate-100 bg-white">
+                  {filteredRows.map((row) => {
+                    const recommendationClass =
+                      row.recommendation === 'Yes'
+                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-100'
+                        : row.recommendation === 'No'
+                          ? 'bg-rose-50 text-rose-700 ring-rose-100'
+                          : 'bg-amber-50 text-amber-700 ring-amber-100'
+                    return (
+                      <article key={row.id} className="p-4 transition hover:bg-emerald-50/30 sm:p-5">
+                        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+                          <div className="min-w-0">
+                            <div className="flex items-start gap-3">
+                              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-200 bg-emerald-50 text-sm font-black text-emerald-700">
+                                {row.serial}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-base font-black leading-6 text-slate-950 sm:text-lg">
+                                    {row.description || '-'}
+                                  </h4>
+                                  <span className={`rounded-full px-2.5 py-1 text-xs font-black ring-1 ${recommendationClass}`}>
+                                    {row.recommendation || 'Pending'}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-xs font-bold text-slate-400">
+                                  {row.submittedBy || 'Not submitted'} - {row.phase}
+                                </p>
+                                {row.sourceRemarks ? (
+                                  <p className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-medium leading-6 text-slate-600">
+                                    {row.sourceRemarks}
+                                  </p>
+                                ) : null}
                               </div>
                             </div>
-                          </td>
-                          </tr>
-                        </Fragment>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+
+                          <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+                            {[
+                              { label: 'District', value: row.district || '-', icon: MapPin },
+                              { label: 'Category', value: row.category || 'Other', icon: Tags },
+                              { label: 'Cost', value: formatCostMillions(row.costMn), icon: CircleDollarSign },
+                              { label: 'Agency', value: row.executingAgency || '-', icon: Building2 },
+                              { label: 'Status', value: row.status || 'Draft', icon: ShieldCheck },
+                            ].map((item) => {
+                              const Icon = item.icon
+                              return (
+                                <div key={item.label} className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm shadow-slate-950/5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700">
+                                      <Icon size={14} />
+                                    </span>
+                                    <span className="form-label text-[10px]">{item.label}</span>
+                                  </div>
+                                  <p className="mt-2 truncate text-sm font-black text-slate-800">{item.value}</p>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-white p-3 shadow-sm shadow-emerald-950/5">
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="form-label">Review decision</p>
+                              <p className="mt-1 text-xs font-semibold text-slate-500">Engineering assessment, recommendation, and command remarks</p>
+                            </div>
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-100">
+                              Row #{row.serial}
+                            </span>
+                          </div>
+                          <div className="grid gap-3 lg:grid-cols-[minmax(240px,0.9fr)_180px_minmax(280px,1.3fr)]">
+                            <label className="min-w-0">
+                              <span className="form-label mb-1.5 block">Asst by Engr</span>
+                              <select
+                                value={row.assessedByEngr}
+                                onChange={(event) => updateRow(row.id, 'assessedByEngr', event.target.value)}
+                                disabled={!adminAuthed}
+                                className="form-input h-11 text-sm"
+                              >
+                                <option value="">Select assessment</option>
+                                {ENGINEER_ASSESSMENT_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>{option}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span className="form-label mb-1.5 block">Recommendation</span>
+                              <select
+                                value={row.recommendation}
+                                onChange={(event) => updateRow(row.id, 'recommendation', event.target.value)}
+                                disabled={!adminAuthed}
+                                className="form-input h-11 text-sm"
+                              >
+                                <option value="">Pending</option>
+                                {RECOMMENDATION_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>{option}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="min-w-0">
+                              <span className="form-label mb-1.5 block">Remarks Comd</span>
+                              <textarea
+                                value={row.remarksComd}
+                                onChange={(event) => updateRow(row.id, 'remarksComd', event.target.value)}
+                                disabled={!adminAuthed}
+                                className="form-input min-h-[84px] resize-y text-sm leading-6"
+                                placeholder="Remarks"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  })}
                 </div>
                 {!filteredRows.length ? (
                   <div className="grid min-h-[180px] place-items-center border-t border-slate-100 p-8 text-center">
