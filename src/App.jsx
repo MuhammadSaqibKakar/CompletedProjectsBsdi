@@ -4246,7 +4246,6 @@ export default function App() {
     return true
   }
 
-  const headerCompleted = phaseProjects.length
   const tabs = [
     { id: 'insights', label: 'Insights', icon: BarChart3 },
     { id: 'visuals', label: 'Visuals', icon: ImageIcon },
@@ -4442,10 +4441,15 @@ export default function App() {
             </div>
 
             <div className="grid shrink-0 gap-2 sm:min-w-[150px] sm:gap-3">
-              <div className="rounded-xl border border-white/10 bg-white/8 p-3 backdrop-blur-sm sm:p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Completed</p>
-                <p className="mt-1.5 text-2xl font-bold text-white">{headerCompleted}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('ee-p3')}
+                className="rounded-xl border border-white/10 bg-white/8 p-3 text-left backdrop-blur-sm transition hover:border-emerald-300/40 hover:bg-white/12 focus:outline-none focus:ring-2 focus:ring-emerald-300/60 sm:p-4"
+                title="Open E&E of P3 projects"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Open page</p>
+                <p className="mt-1.5 text-lg font-bold leading-tight text-white sm:text-xl">E&E of P3 projs</p>
+              </button>
             </div>
           </div>
         </header>
@@ -4534,6 +4538,8 @@ export default function App() {
             onEditProject={adminAuthed ? openAdminEditor : null}
           />
         ) : null}
+
+        {visibleActiveTab === 'ee-p3' ? <section className="min-h-[55vh] rounded-2xl bg-white shadow-card" /> : null}
 
         {visibleActiveTab === 'admin' && adminAuthed ? (
           <AdminPanel
