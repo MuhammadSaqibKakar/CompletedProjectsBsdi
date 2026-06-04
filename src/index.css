@@ -4,7 +4,7 @@
 
 :root {
   color: #0f172a;
-  background: #f8fafc;
+  background: #f3f8ff;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -20,7 +20,7 @@
 
 html {
   min-width: 320px;
-  background: #f8fafc;
+  background: #f3f8ff;
   overflow-x: hidden;
 }
 
@@ -29,6 +29,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
+  background:
+    linear-gradient(135deg, rgba(219, 234, 254, 0.85) 0%, rgba(248, 250, 252, 0.98) 36%, rgba(236, 253, 245, 0.85) 100%);
 }
 
 button,
@@ -50,13 +52,14 @@ video {
 @layer components {
   /* Base card */
   .card {
-    background: #ffffff;
-    border: 1px solid #e8edf2;
-    border-radius: 16px;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.92) 58%, rgba(239, 246, 255, 0.72) 100%);
+    border: 1px solid rgba(191, 219, 254, 0.75);
+    border-radius: 26px;
     box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.04),
-      0 3px 10px rgba(0, 0, 0, 0.04),
-      0 8px 28px rgba(0, 0, 0, 0.03),
+      0 1px 2px rgba(15, 23, 42, 0.05),
+      0 12px 30px rgba(15, 23, 42, 0.08),
+      0 28px 70px rgba(30, 64, 175, 0.06),
       inset 0 1px 0 rgba(255, 255, 255, 0.9);
   }
 
@@ -66,14 +69,13 @@ video {
     isolation: isolate;
     overflow: hidden;
     background:
-      radial-gradient(circle at 0% 0%, rgba(209, 250, 229, 0.82) 0, rgba(209, 250, 229, 0) 30%),
-      linear-gradient(145deg, #ffffff 0%, #ffffff 48%, #f2fbf6 100%);
-    border: 1px solid rgba(213, 225, 219, 0.95);
-    border-radius: 18px;
+      linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 46%, rgba(239, 246, 255, 0.86) 100%);
+    border: 1px solid rgba(191, 219, 254, 0.85);
+    border-radius: 26px;
     box-shadow:
       0 1px 2px rgba(15, 23, 42, 0.05),
-      0 10px 26px rgba(15, 23, 42, 0.08),
-      0 20px 48px rgba(6, 78, 59, 0.07),
+      0 14px 34px rgba(15, 23, 42, 0.09),
+      0 24px 60px rgba(30, 64, 175, 0.08),
       inset 0 1px 0 rgba(255, 255, 255, 0.95);
     transition:
       transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -87,8 +89,8 @@ video {
     inset: 0;
     z-index: 0;
     background:
-      linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 34%),
-      radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.14) 0, rgba(16, 185, 129, 0) 34%);
+      linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0) 36%),
+      linear-gradient(120deg, rgba(37, 99, 235, 0.10), rgba(16, 185, 129, 0.08));
     pointer-events: none;
   }
 
@@ -99,7 +101,7 @@ video {
     z-index: 0;
     height: 3px;
     border-radius: 999px 999px 0 0;
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0), rgba(16, 185, 129, 0.62), rgba(16, 185, 129, 0));
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0), rgba(37, 99, 235, 0.58), rgba(16, 185, 129, 0.58), rgba(16, 185, 129, 0));
     opacity: 0.72;
     pointer-events: none;
   }
@@ -110,11 +112,11 @@ video {
   }
 
   .card-interactive:hover {
-    border-color: rgba(52, 211, 153, 0.72);
+    border-color: rgba(96, 165, 250, 0.88);
     box-shadow:
-      0 0 0 4px rgba(16, 185, 129, 0.09),
-      0 14px 30px rgba(5, 150, 105, 0.13),
-      0 28px 60px rgba(15, 23, 42, 0.12),
+      0 0 0 5px rgba(59, 130, 246, 0.09),
+      0 16px 36px rgba(30, 64, 175, 0.14),
+      0 30px 70px rgba(15, 23, 42, 0.12),
       inset 0 1px 0 rgba(255, 255, 255, 1);
     transform: translateY(-4px);
   }
@@ -127,7 +129,7 @@ video {
     color: #059669;
     background: linear-gradient(145deg, #f0fdf9 0%, #d1fae5 100%);
     border: 1px solid rgba(16, 185, 129, 0.18);
-    border-radius: 8px;
+    border-radius: 14px;
     box-shadow:
       0 2px 6px rgba(16, 185, 129, 0.10),
       inset 0 1px 0 rgba(255, 255, 255, 0.85);
@@ -157,17 +159,23 @@ video {
     min-width: 0;
     height: 2.5rem;
     padding: 0 1rem;
-    border-radius: 0.5rem;
-    background: #059669;
+    border-radius: 1rem;
+    background: linear-gradient(135deg, #1d4ed8 0%, #0f766e 100%);
     color: #ffffff;
     font-size: 0.875rem;
     font-weight: 600;
     white-space: nowrap;
-    transition: background 150ms ease;
+    box-shadow: 0 12px 26px rgba(30, 64, 175, 0.18);
+    transition:
+      transform 150ms ease,
+      box-shadow 150ms ease,
+      filter 150ms ease;
   }
 
   .btn-primary:hover {
-    background: #047857;
+    filter: brightness(1.04);
+    box-shadow: 0 16px 34px rgba(30, 64, 175, 0.22);
+    transform: translateY(-1px);
   }
 
   .btn-secondary {
@@ -178,21 +186,25 @@ video {
     min-width: 0;
     height: 2.5rem;
     padding: 0 1rem;
-    border-radius: 0.5rem;
+    border-radius: 1rem;
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    color: #374151;
+    border: 1px solid rgba(191, 219, 254, 0.85);
+    color: #172554;
     font-size: 0.875rem;
     font-weight: 600;
     white-space: nowrap;
     transition:
       border-color 150ms ease,
-      background 150ms ease;
+      background 150ms ease,
+      transform 150ms ease,
+      box-shadow 150ms ease;
   }
 
   .btn-secondary:hover {
-    border-color: #cbd5e1;
-    background: #f8fafc;
+    border-color: #93c5fd;
+    background: #eff6ff;
+    box-shadow: 0 12px 28px rgba(30, 64, 175, 0.10);
+    transform: translateY(-1px);
   }
 
   .btn-danger {
@@ -203,7 +215,7 @@ video {
     min-width: 0;
     height: 2.5rem;
     padding: 0 1rem;
-    border-radius: 0.5rem;
+    border-radius: 1rem;
     background: #ffffff;
     border: 1px solid #fecaca;
     color: #dc2626;
@@ -235,8 +247,8 @@ video {
     margin-top: 0.25rem;
     height: 2.5rem;
     width: 100%;
-    border-radius: 0.5rem;
-    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    border: 1px solid rgba(203, 213, 225, 0.9);
     background: #ffffff;
     padding: 0 0.75rem;
     font-size: 0.875rem;
@@ -248,15 +260,15 @@ video {
   }
 
   .form-input:focus {
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
   }
 
   .form-textarea {
     margin-top: 0.25rem;
     width: 100%;
-    border-radius: 0.5rem;
-    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    border: 1px solid rgba(203, 213, 225, 0.9);
     background: #ffffff;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
@@ -269,8 +281,8 @@ video {
   }
 
   .form-textarea:focus {
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
   }
 
   .form-label {

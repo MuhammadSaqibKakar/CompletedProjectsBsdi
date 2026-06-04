@@ -147,6 +147,16 @@ const ENGINEER_ASSESSMENT_OPTIONS = [
 
 const RECOMMENDATION_OPTIONS = ['Yes', 'No']
 
+const PROPOSAL_SECTOR_COLORS = [
+  { dot: 'bg-blue-500', bar: 'from-blue-600 to-sky-400', card: 'from-blue-50 to-white' },
+  { dot: 'bg-emerald-500', bar: 'from-emerald-600 to-teal-400', card: 'from-emerald-50 to-white' },
+  { dot: 'bg-indigo-500', bar: 'from-indigo-600 to-violet-400', card: 'from-indigo-50 to-white' },
+  { dot: 'bg-cyan-500', bar: 'from-cyan-600 to-blue-400', card: 'from-cyan-50 to-white' },
+  { dot: 'bg-amber-500', bar: 'from-amber-500 to-orange-400', card: 'from-amber-50 to-white' },
+  { dot: 'bg-rose-500', bar: 'from-rose-500 to-pink-400', card: 'from-rose-50 to-white' },
+  { dot: 'bg-slate-500', bar: 'from-slate-600 to-slate-400', card: 'from-slate-50 to-white' },
+]
+
 const PROPOSAL_HEADER_ALIASES = {
   serial: ['#', 'serial', 'sr', 'sno', 'srno'],
   description: ['description', 'projectdescription', 'project', 'name', 'projectname'],
@@ -2163,15 +2173,16 @@ function RingMetricCard({ icon: Icon, label, value, detail, percent }) {
 
   return (
     <div className="card group relative overflow-hidden p-4 sm:p-5">
-      <div className="pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-emerald-100/60 blur-2xl transition group-hover:bg-emerald-200/80" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-blue-600 via-emerald-500 to-cyan-400" />
+      <div className="pointer-events-none absolute right-0 top-0 h-28 w-28 rounded-bl-[48px] bg-blue-100/60 blur-2xl transition group-hover:bg-blue-200/80" />
       <div className="relative flex items-start justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-emerald-400/20 bg-emerald-600 text-white shadow-lg shadow-emerald-700/15 ring-4 ring-emerald-50">
+        <p className="text-xs font-black uppercase tracking-wide text-slate-400">{label}</p>
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-white/50 bg-gradient-to-br from-blue-700 to-emerald-700 text-white shadow-lg shadow-blue-900/15 ring-4 ring-blue-50">
           <Icon size={20} strokeWidth={2.2} />
         </span>
       </div>
-      <p className={`relative mt-3 break-words font-bold leading-tight text-slate-900 ${valueClass}`}>{value}</p>
-      <p className="relative mt-1 text-sm text-slate-500">{detail}</p>
+      <p className={`relative mt-3 break-words font-black leading-tight text-slate-950 ${valueClass}`}>{value}</p>
+      <p className="relative mt-1 text-sm font-medium text-slate-500">{detail}</p>
       <div className="progress-track relative mt-4">
         <div className="progress-fill" style={{ width: `${safePercent}%` }} />
       </div>
@@ -3788,6 +3799,21 @@ function ProposalReviewPanel({
 
   const districtOptions = useMemo(() => unique(rows.map((row) => row.district)), [rows])
   const categoryOptions = useMemo(() => unique(rows.map((row) => row.category)), [rows])
+  const sectorDistribution = useMemo(() => {
+    const buckets = new Map()
+    rows.forEach((row) => {
+      const name = row.category || 'Other'
+      const current = buckets.get(name) || { name, count: 0, costMn: 0 }
+      current.count += 1
+      current.costMn += Number(row.costMn) || 0
+      buckets.set(name, current)
+    })
+    return [...buckets.values()]
+      .sort((a, b) => b.count - a.count || b.costMn - a.costMn || a.name.localeCompare(b.name))
+      .slice(0, 7)
+  }, [rows])
+  const sectorTotalCount = rows.length
+  const sectorMaxCount = Math.max(...sectorDistribution.map((item) => item.count), 1)
   const selectedSerialized = useMemo(
     () => JSON.stringify(cleanProposalDocument(selectedDocument || {}).rows || []),
     [selectedDocument],
@@ -4002,6 +4028,61 @@ function ProposalReviewPanel({
                     </div>
                   )
                 })}
+              </div>
+
+              <div className="overflow-hidden rounded-[30px] border border-blue-100 bg-white shadow-xl shadow-blue-950/10">
+                <div className="grid gap-4 bg-gradient-to-br from-white via-blue-50/80 to-emerald-50/60 p-4 lg:grid-cols-[minmax(220px,0.55fr)_minmax(0,1fr)] lg:items-center">
+                  <div className="rounded-[26px] bg-gradient-to-br from-blue-950 via-blue-800 to-emerald-800 p-5 text-white shadow-2xl shadow-blue-950/20">
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/14 text-blue-50 ring-1 ring-white/15">
+                        <ChartPie size={22} />
+                      </span>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide text-blue-100/80">Sector-wise distribution</p>
+                        <h3 className="mt-1 text-2xl font-black text-white">{sectorTotalCount} proposals</h3>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm font-medium leading-6 text-blue-50/80">
+                      Sector spread from the active proposal document, grouped by proposal category with estimated value.
+                    </p>
+                    <div className="mt-5 grid grid-cols-2 gap-2">
+                      {sectorDistribution.slice(0, 4).map((sector, index) => {
+                        const color = PROPOSAL_SECTOR_COLORS[index % PROPOSAL_SECTOR_COLORS.length]
+                        return (
+                          <div key={sector.name} className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
+                            <span className={`mb-2 block h-2 w-8 rounded-full ${color.dot}`} />
+                            <p className="truncate text-xs font-bold text-blue-50/75">{sector.name}</p>
+                            <p className="mt-1 text-lg font-black text-white">{sector.count}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {sectorDistribution.map((sector, index) => {
+                      const color = PROPOSAL_SECTOR_COLORS[index % PROPOSAL_SECTOR_COLORS.length]
+                      const width = `${Math.max(8, Math.round((sector.count / sectorMaxCount) * 100))}%`
+                      return (
+                        <div key={sector.name} className={`rounded-3xl border border-blue-100 bg-gradient-to-r ${color.card} p-3 shadow-sm shadow-blue-950/5`}>
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className={`h-3 w-3 shrink-0 rounded-full ${color.dot}`} />
+                              <p className="truncate text-sm font-black text-slate-950">{sector.name}</p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="text-sm font-black text-slate-950">{sector.count}</p>
+                              <p className="text-xs font-bold text-emerald-700">{formatCostMillions(sector.costMn)}</p>
+                            </div>
+                          </div>
+                          <div className="h-3 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/70">
+                            <div className={`h-full rounded-full bg-gradient-to-r ${color.bar} shadow-sm`} style={{ width }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div className="overflow-hidden rounded-[28px] border border-blue-100 bg-white shadow-xl shadow-slate-950/10">
@@ -5254,7 +5335,7 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-transparent">
       <div className="app-shell mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
 
         {/* Header */}
