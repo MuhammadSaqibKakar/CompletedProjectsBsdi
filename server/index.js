@@ -5,6 +5,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
+import { generateCachedPptReport } from './ppt-report.js'
 import { clearReportCache, generateCachedReport, getReportStatus } from './report.js'
 import { createDashboardStorage } from './storage.js'
 
@@ -204,6 +205,11 @@ async function reportDownloadName(reportPath) {
   return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pdf`
 }
 
+async function pptReportDownloadName(reportPath) {
+  const stat = await fs.stat(reportPath)
+  return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pptx`
+}
+
 async function rebuildDefaultReport(data) {
   defaultReportBuilding = true
   try {
@@ -287,6 +293,28 @@ app.get('/api/report/pdf', async (req, res, next) => {
     })
     res.set('Cache-Control', 'no-store')
     res.download(reportPath, await reportDownloadName(reportPath))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/report/pptx', async (req, res, next) => {
+  try {
+    const state = await readDashboardState()
+    const filters = {
+      phase: req.query.phase || 'Total',
+      district: req.query.district || 'All Districts',
+    }
+    const reportPath = await generateCachedPptReport({
+      data: state,
+      reportsDir,
+      rootDir,
+      dataDir,
+      filters,
+      force: req.query.force !== '0',
+    })
+    res.set('Cache-Control', 'no-store')
+    res.download(reportPath, await pptReportDownloadName(reportPath))
   } catch (error) {
     next(error)
   }

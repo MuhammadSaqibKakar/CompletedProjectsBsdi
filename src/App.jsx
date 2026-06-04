@@ -14,6 +14,7 @@ import {
   Cloud,
   CloudOff,
   ExternalLink,
+  FileDown,
   FileJson,
   FolderOpen,
   Image as ImageIcon,
@@ -51,6 +52,7 @@ const API_BASE_URL = (import.meta.env.VITE_BSDI_API_BASE_URL || '').replace(/\/+
 const API_STATE_ENDPOINT = `${API_BASE_URL}/api/state`
 const API_MEDIA_ENDPOINT = `${API_BASE_URL}/api/media`
 const API_REPORT_ENDPOINT = `${API_BASE_URL}/api/report/pdf`
+const API_PPT_REPORT_ENDPOINT = `${API_BASE_URL}/api/report/pptx`
 const API_REPORT_STATUS_ENDPOINT = `${API_BASE_URL}/api/report/status`
 const API_UNAVAILABLE_MESSAGE = 'Shared sync server is not enabled on this deployment'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
@@ -561,6 +563,17 @@ function reportDownloadUrl() {
     t: String(Date.now()),
   })
   return `${API_REPORT_ENDPOINT}?${params.toString()}`
+}
+
+function pptReportDownloadUrl() {
+  const params = new URLSearchParams({
+    phase: 'Total',
+    district: DISTRICT_FILTER_ALL,
+    download: '1',
+    force: '1',
+    t: String(Date.now()),
+  })
+  return `${API_PPT_REPORT_ENDPOINT}?${params.toString()}`
 }
 
 function reportStatusUrl() {
@@ -4483,6 +4496,7 @@ export default function App() {
   const [printReportReady, setPrintReportReady] = useState(false)
   const [printRequested, setPrintRequested] = useState(false)
   const [printBusy, setPrintBusy] = useState(false)
+  const [pptBusy, setPptBusy] = useState(false)
   const [latestSavedReportStamp, setLatestSavedReportStamp] = useState('')
   const [adminReturnTab, setAdminReturnTab] = useState('admin')
 
@@ -5288,6 +5302,21 @@ export default function App() {
     window.setTimeout(() => setPrintBusy(false), 1200)
   }
 
+  function printPptReport() {
+    if (pptBusy) return
+    setPptBusy(true)
+
+    const link = document.createElement('a')
+    link.href = pptReportDownloadUrl()
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+
+    notify('PPT download started', 'The deck is generated from the latest database data.', 'success')
+    window.setTimeout(() => setPptBusy(false), 2500)
+  }
+
   if (loadError) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
@@ -5494,10 +5523,20 @@ export default function App() {
               onClick={printAllProjects}
               disabled={printBusy}
               className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
-              title="Open the print-ready completed-project report"
+              title="Download the print-ready completed-project PDF"
             >
               {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}
-              {printBusy ? 'Preparing' : 'Print'}
+              {printBusy ? 'Preparing' : 'Print PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={printPptReport}
+              disabled={pptBusy}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-700 to-indigo-700 px-4 text-sm font-bold text-white shadow-sm transition hover:from-blue-800 hover:to-indigo-800 disabled:cursor-not-allowed disabled:opacity-70"
+              title="Download an editable PowerPoint report with clickable section tags"
+            >
+              {pptBusy ? <RefreshCw size={15} className="animate-spin" /> : <FileDown size={15} />}
+              {pptBusy ? 'Preparing' : 'Print PPT'}
             </button>
             {latestSavedReportStamp ? (
               <span
