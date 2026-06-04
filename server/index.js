@@ -22,6 +22,7 @@ const mediaDir = path.join(dataDir, 'media')
 const tempDir = path.join(dataDir, 'tmp')
 const reportsDir = path.join(dataDir, 'generated-reports')
 const liveDbPath = path.join(dataDir, 'bsdi-db.json')
+const canonicalPptFileName = 'Completed_BSDI-14-03-2026.pptx'
 const port = Number(process.env.PORT || 4174)
 const uploadLimit = Number(process.env.BSDI_MAX_UPLOAD_BYTES || 1024 * 1024 * 1024)
 const dashboardStorage = createDashboardStorage({ bundledDbPath, liveDbPath })
@@ -222,6 +223,46 @@ async function pptReportDownloadName(reportPath) {
   return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pptx`
 }
 
+async function findCanonicalPptPath() {
+  const candidates = [
+    process.env.BSDI_CANONICAL_PPTX_PATH,
+    process.env.BSDI_TEMPLATE_PPTX_PATH,
+    path.join(dataDir, 'templates', canonicalPptFileName),
+    path.join(dataDir, canonicalPptFileName),
+    path.resolve(rootDir, '..', canonicalPptFileName),
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    try {
+      const stat = await fs.stat(candidate)
+      if (stat.isFile()) return { filePath: candidate, stat }
+    } catch {
+      // Try the next configured location.
+    }
+  }
+  return null
+}
+
+async function canonicalPptStatus() {
+  const template = await findCanonicalPptPath()
+  if (!template) {
+    return {
+      ready: false,
+      fileName: canonicalPptFileName,
+      readyAt: '',
+      size: 0,
+      source: 'canonical-template',
+    }
+  }
+  return {
+    ready: true,
+    fileName: path.basename(template.filePath),
+    readyAt: template.stat.mtime.toISOString(),
+    size: template.stat.size,
+    source: 'canonical-template',
+  }
+}
+
 async function rebuildDefaultReports(data) {
   const defaultFilters = { phase: 'Total', district: 'All Districts' }
   const errors = []
@@ -336,6 +377,13 @@ app.get('/api/report/pdf', async (req, res, next) => {
 
 app.get('/api/report/pptx', async (req, res, next) => {
   try {
+    const canonicalPpt = await findCanonicalPptPath()
+    if (canonicalPpt) {
+      res.set('Cache-Control', 'no-store')
+      res.download(canonicalPpt.filePath, path.basename(canonicalPpt.filePath))
+      return
+    }
+
     const state = await readDashboardState()
     const filters = {
       phase: req.query.phase || 'Total',
@@ -365,6 +413,8 @@ app.get('/api/report/status', async (req, res, next) => {
     }
     const status = await getReportStatus({ reportsDir, filters })
     const pptStatus = await getPptReportStatus({ reportsDir, filters })
+    const templatePptStatus = await canonicalPptStatus()
+    const activePptStatus = templatePptStatus.ready ? templatePptStatus : pptStatus
     const isDefault = isDefaultReportFilter(filters)
     const anyDefaultReportWork = isDefault
       ? defaultReportBuilding || defaultPptReportBuilding || Boolean(queuedDefaultReportData)
@@ -380,9 +430,9 @@ app.get('/api/report/status', async (req, res, next) => {
         readyStamp: status.readyAt ? pakistanDisplayStamp(new Date(status.readyAt)) : '',
       },
       ppt: {
-        ...pptStatus,
-        building: anyDefaultReportWork,
-        readyStamp: pptStatus.readyAt ? pakistanDisplayStamp(new Date(pptStatus.readyAt)) : '',
+        ...activePptStatus,
+        building: templatePptStatus.ready ? false : anyDefaultReportWork,
+        readyStamp: activePptStatus.readyAt ? pakistanDisplayStamp(new Date(activePptStatus.readyAt)) : '',
       },
     })
   } catch (error) {

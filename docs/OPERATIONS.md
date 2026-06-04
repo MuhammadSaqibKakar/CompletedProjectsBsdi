@@ -72,11 +72,12 @@ After deployment, confirm `/api/health` shows:
 }
 ```
 
-Generated report PDFs and uploaded media still live in the data directory:
+Generated report PDFs, uploaded media, and the canonical PPT download live in the data directory:
 
 ```text
 BSDI_DATA_DIR/generated-reports/
 BSDI_DATA_DIR/media/
+BSDI_DATA_DIR/templates/Completed_BSDI-14-03-2026.pptx
 ```
 
 If `BSDI_DATA_DIR` is not set, local development uses `server-data/`. For Hostinger production, set `BSDI_DATA_DIR` to a writable folder outside redeployed app files, for example `../bsdi-data`.
@@ -91,7 +92,7 @@ After that, MySQL becomes the source of truth for online users. GitHub redeploys
 
 If the frontend is hosted separately from the Node API, build the frontend with `VITE_BSDI_API_BASE_URL` set to the Node API domain.
 
-When an online save succeeds, old generated PDF files are deleted and the default `Total / All Districts` report starts rebuilding in the background. The Print button downloads that cached PDF directly with a Pakistan-time filename. The PDF file is stored in persistent `BSDI_DATA_DIR/generated-reports/`; project records remain in MySQL.
+When an online save succeeds, old generated PDF files are deleted and the default `Total / All Districts` report starts rebuilding in the background. The PDF button downloads that cached PDF directly with a Pakistan-time filename. The PPT button first downloads the exact canonical PowerPoint at `BSDI_DATA_DIR/templates/Completed_BSDI-14-03-2026.pptx`; if that file is missing, it falls back to the generated PPT report. Project records remain in MySQL.
 
 ## Backup Routine
 

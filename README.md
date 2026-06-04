@@ -151,6 +151,7 @@ The app has four data layers:
 | Production DB | Stores shared online edits in MySQL table `bsdi_dashboard_state` |
 | JSON fallback | Local/dev fallback at `BSDI_DATA_DIR/bsdi-db.json` when MySQL env vars are not set |
 | Server report cache | Stores generated PDFs in `BSDI_DATA_DIR/generated-reports/` |
+| Canonical PPT | Stores the exact PPT download at `BSDI_DATA_DIR/templates/Completed_BSDI-14-03-2026.pptx` |
 
 Admin edits save locally first. If the shared Node API is available, the app pushes the updated database to `/api/state`. If the user is offline or the deployment is frontend-only, edits stay on that laptop as pending local changes.
 
@@ -158,7 +159,7 @@ The server uses a revision number to stop silent overwrites. If two admins edit 
 
 For production, set `BSDI_REQUIRE_MYSQL=true`. With that guard enabled, online saves and media uploads are blocked unless MySQL is connected, so new website data cannot silently go into a temporary JSON file.
 
-After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report in the background. The Print button downloads that cached PDF with a Pakistan-time filename. Project records remain in MySQL; uploaded media and generated PDF files remain in persistent `BSDI_DATA_DIR`.
+After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report in the background. The PDF button downloads that cached PDF with a Pakistan-time filename. The PPT button downloads the exact canonical PowerPoint from `BSDI_DATA_DIR/templates/Completed_BSDI-14-03-2026.pptx` when present, with a generated PPT fallback if the canonical file is missing. Project records remain in MySQL; uploaded media and report files remain in persistent `BSDI_DATA_DIR`.
 
 For split frontend/backend hosting, build the frontend with `VITE_BSDI_API_BASE_URL=https://your-node-api-domain` so `/api/state`, `/api/media`, and synced uploaded media resolve to the separate Node service. For a single Hostinger Node app, leave it unset.
 
