@@ -3867,18 +3867,55 @@ function ProposalReviewPanel({
 
   const reviewPercent = summary.total ? Math.round((summary.assessed / summary.total) * 100) : 0
   const summaryCards = [
-    { label: 'Proposals', value: summary.total, detail: `${filteredRows.length} visible`, icon: TableProperties },
-    { label: 'Estimated cost', value: formatCostMillions(summary.costMn), detail: 'Total proposal value', icon: CircleDollarSign },
-    { label: 'Districts', value: summary.districts, detail: `${summary.categories} categories`, icon: MapPinned },
-    { label: 'Recommended', value: summary.yes, detail: `${summary.no} marked no`, icon: Check },
-    { label: 'Pending review', value: summary.pending, detail: `${reviewPercent}% assessed`, icon: Info },
+    {
+      label: 'Proposals',
+      value: summary.total,
+      detail: `${filteredRows.length} visible`,
+      icon: TableProperties,
+      tone: 'from-blue-700 via-indigo-700 to-slate-900 shadow-blue-950/20',
+      iconTone: 'bg-white/15 text-blue-50 ring-white/15',
+    },
+    {
+      label: 'Estimated cost',
+      value: formatCostMillions(summary.costMn),
+      detail: 'Total proposal value',
+      icon: CircleDollarSign,
+      tone: 'from-emerald-700 via-teal-700 to-cyan-900 shadow-emerald-950/20',
+      iconTone: 'bg-white/15 text-emerald-50 ring-white/15',
+    },
+    {
+      label: 'Districts',
+      value: summary.districts,
+      detail: `${summary.categories} categories`,
+      icon: MapPinned,
+      tone: 'from-sky-700 via-cyan-700 to-blue-900 shadow-sky-950/20',
+      iconTone: 'bg-white/15 text-cyan-50 ring-white/15',
+    },
+    {
+      label: 'Recommended',
+      value: summary.yes,
+      detail: `${summary.no} marked no`,
+      icon: Check,
+      tone: 'from-lime-700 via-emerald-700 to-green-900 shadow-green-950/20',
+      iconTone: 'bg-white/15 text-lime-50 ring-white/15',
+    },
+    {
+      label: 'Pending review',
+      value: summary.pending,
+      detail: `${reviewPercent}% assessed`,
+      icon: Info,
+      tone: 'from-amber-600 via-orange-700 to-rose-900 shadow-orange-950/20',
+      iconTone: 'bg-white/15 text-amber-50 ring-white/15',
+    },
   ]
 
   return (
-    <section className="space-y-4">
-      <div className="relative overflow-hidden rounded-[28px] border border-emerald-900/20 bg-gradient-to-br from-emerald-950 via-emerald-800 to-slate-950 p-4 text-white shadow-2xl shadow-emerald-950/20 sm:p-5">
+    <section className="relative space-y-5 overflow-hidden rounded-[32px] border border-slate-200 bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-3 shadow-inner shadow-slate-200/70 sm:p-4">
+      <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-blue-600 via-emerald-500 to-amber-400" />
+      <div className="relative overflow-hidden rounded-[28px] border border-white/20 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-4 text-white shadow-2xl shadow-slate-950/25 sm:p-5">
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-emerald-400/15 to-transparent" />
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-          <div className="min-w-0">
+          <div className="relative min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex rounded-full bg-white/12 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-50 ring-1 ring-white/15">
                 E&E of P3 projs
@@ -3903,7 +3940,7 @@ function ProposalReviewPanel({
               Review uploaded P3 proposals by district, cost, assessment, recommendation, and command remarks.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+          <div className="relative flex flex-wrap items-center gap-2 xl:justify-end">
             {!adminAuthed ? (
               <button type="button" onClick={onRequestAdmin} className="btn-secondary border-white/20 bg-white/10 text-white hover:bg-white/15">
                 <LockKeyhole size={15} />
@@ -3921,7 +3958,7 @@ function ProposalReviewPanel({
               type="button"
               onClick={() => (adminAuthed ? fileInputRef.current?.click() : onRequestAdmin())}
               disabled={uploading}
-              className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-emerald-900 shadow-lg shadow-emerald-950/20 transition hover:-translate-y-0.5 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-blue-950 shadow-lg shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {uploading ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
               {uploading ? 'Reading file' : 'Upload proposal file'}
@@ -3933,12 +3970,12 @@ function ProposalReviewPanel({
       <div className="space-y-4">
         <div className="min-w-0 space-y-4">
           {!draftDocument ? (
-            <div className="card grid min-h-[360px] place-items-center p-8 text-center">
+            <div className="grid min-h-[360px] place-items-center rounded-[28px] border border-dashed border-blue-200 bg-gradient-to-br from-white via-blue-50 to-emerald-50 p-8 text-center shadow-card">
               <div>
-                <span className="icon-box mx-auto h-12 w-12 rounded-xl">
+                <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-700 to-emerald-700 text-white shadow-lg shadow-blue-950/20">
                   <Upload size={22} />
                 </span>
-                <h3 className="mt-4 text-xl font-bold text-slate-900">Upload the first proposal workbook</h3>
+                <h3 className="mt-4 text-xl font-black text-slate-950">Upload the first proposal workbook</h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
                   The system will read the proposal rows, calculate the estimate, and add review columns for E&E tracking.
                 </p>
@@ -3950,17 +3987,15 @@ function ProposalReviewPanel({
                 {summaryCards.map((card) => {
                   const Icon = card.icon
                   return (
-                    <div
-                      key={card.label}
-                      className="group relative overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-white via-white to-emerald-50 p-4 shadow-card transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-950/10"
-                    >
+                    <div key={card.label} className={`group relative overflow-hidden rounded-3xl bg-gradient-to-br ${card.tone} p-4 text-white shadow-xl transition hover:-translate-y-0.5 hover:shadow-2xl`}>
+                      <div className="absolute inset-x-0 top-0 h-px bg-white/35" />
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="form-label">{card.label}</p>
-                          <p className="mt-2 truncate text-2xl font-black text-slate-950">{card.value}</p>
-                          <p className="mt-1 text-xs font-bold text-emerald-700">{card.detail}</p>
+                          <p className="text-xs font-black uppercase tracking-wide text-white/70">{card.label}</p>
+                          <p className="mt-2 truncate text-2xl font-black text-white">{card.value}</p>
+                          <p className="mt-1 text-xs font-bold text-white/75">{card.detail}</p>
                         </div>
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-900/10">
+                        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ring-1 ${card.iconTone}`}>
                           <Icon size={19} />
                         </span>
                       </div>
@@ -3969,14 +4004,14 @@ function ProposalReviewPanel({
                 })}
               </div>
 
-              <div className="card overflow-hidden p-0">
-                <div className="grid gap-4 border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 p-4 xl:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)_auto] xl:items-end">
+              <div className="overflow-hidden rounded-[28px] border border-blue-100 bg-white shadow-xl shadow-slate-950/10">
+                <div className="grid gap-4 border-b border-blue-100 bg-gradient-to-r from-blue-950 via-blue-900 to-emerald-900 p-4 text-white xl:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)_auto] xl:items-end">
                   <label className="min-w-0">
-                    <span className="form-label mb-2 block">Proposal document</span>
+                    <span className="mb-2 block text-xs font-black uppercase tracking-wide text-blue-100/80">Proposal document</span>
                     <select
                       value={selectedDocument?.id || ''}
                       onChange={(event) => onSelectDocument(event.target.value)}
-                      className="form-input h-11 font-bold"
+                      className="form-input h-11 border-white/15 bg-white/95 font-bold text-slate-950 shadow-none"
                       title="Select uploaded proposal document"
                     >
                       {documents.map((document) => (
@@ -3989,34 +4024,34 @@ function ProposalReviewPanel({
 
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                     <label className="min-w-0 sm:col-span-2 xl:col-span-1">
-                      <span className="form-label mb-2 block">Search</span>
+                      <span className="mb-2 block text-xs font-black uppercase tracking-wide text-blue-100/80">Search</span>
                       <input
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
-                        className="form-input h-11"
+                        className="form-input h-11 border-white/15 bg-white/95 text-slate-950 shadow-none"
                         placeholder="Search proposals"
                       />
                     </label>
                     <label>
-                      <span className="form-label mb-2 block">District</span>
-                      <select value={districtFilter} onChange={(event) => setDistrictFilter(event.target.value)} className="form-input h-11">
+                      <span className="mb-2 block text-xs font-black uppercase tracking-wide text-blue-100/80">District</span>
+                      <select value={districtFilter} onChange={(event) => setDistrictFilter(event.target.value)} className="form-input h-11 border-white/15 bg-white/95 text-slate-950 shadow-none">
                         <option value="All">All districts</option>
                         {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
                       </select>
                     </label>
                     <label>
-                      <span className="form-label mb-2 block">Category</span>
-                      <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="form-input h-11">
+                      <span className="mb-2 block text-xs font-black uppercase tracking-wide text-blue-100/80">Category</span>
+                      <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="form-input h-11 border-white/15 bg-white/95 text-slate-950 shadow-none">
                         <option value="All">All categories</option>
                         {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
                       </select>
                     </label>
                     <label>
-                      <span className="form-label mb-2 block">Recommendation</span>
+                      <span className="mb-2 block text-xs font-black uppercase tracking-wide text-blue-100/80">Recommendation</span>
                       <select
                         value={recommendationFilter}
                         onChange={(event) => setRecommendationFilter(event.target.value)}
-                        className="form-input h-11"
+                        className="form-input h-11 border-white/15 bg-white/95 text-slate-950 shadow-none"
                       >
                         <option value="All">All recommendations</option>
                         <option value="Unreviewed">Unreviewed</option>
@@ -4028,7 +4063,7 @@ function ProposalReviewPanel({
 
                   <div className="flex flex-wrap gap-2 xl:justify-end">
                     {hasUnsavedChanges ? (
-                      <button type="button" onClick={() => setDraftDocument(cleanProposalDocument(selectedDocument))} className="btn-secondary h-11">
+                      <button type="button" onClick={() => setDraftDocument(cleanProposalDocument(selectedDocument))} className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 text-sm font-black text-white transition hover:bg-white/15">
                         <RotateCcw size={15} />
                         Discard
                       </button>
@@ -4037,7 +4072,7 @@ function ProposalReviewPanel({
                       type="button"
                       onClick={saveDraft}
                       disabled={!hasUnsavedChanges || !adminAuthed}
-                      className="btn-primary h-11"
+                      className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-blue-950 shadow-lg shadow-slate-950/20 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                       title={!adminAuthed ? 'Unlock admin access to save' : 'Save proposal assessment'}
                     >
                       <Save size={15} />
@@ -4045,16 +4080,16 @@ function ProposalReviewPanel({
                     </button>
                   </div>
                 </div>
-                <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="grid gap-3 bg-gradient-to-r from-white via-sky-50 to-emerald-50 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="truncate text-xl font-black text-slate-950">{draftDocument.title}</h3>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
+                      <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800 ring-1 ring-blue-200">
                         {draftDocument.uploadedLabel}
                       </span>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-700" style={{ width: `${reviewPercent}%` }} />
+                      <div className="h-full rounded-full bg-gradient-to-r from-blue-600 via-emerald-500 to-amber-400" style={{ width: `${reviewPercent}%` }} />
                     </div>
                     <p className="mt-2 text-xs font-bold text-slate-400">
                       {filteredRows.length} of {rows.length} rows shown - {summary.assessed} assessed - {summary.pending} pending
@@ -4074,20 +4109,20 @@ function ProposalReviewPanel({
                 </div>
               </div>
 
-              <div className="card overflow-hidden">
-                <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl shadow-slate-950/10">
+                <div className="flex flex-col gap-2 border-b border-blue-900/20 bg-gradient-to-r from-blue-950 via-indigo-900 to-slate-950 p-4 text-white sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="form-label">Proposal register</p>
-                    <h3 className="mt-1 text-lg font-black text-slate-950">
+                    <p className="text-xs font-black uppercase tracking-wide text-blue-100/80">Proposal register</p>
+                    <h3 className="mt-1 text-lg font-black text-white">
                       {filteredRows.length} proposal{filteredRows.length === 1 ? '' : 's'} in view
                     </h3>
                   </div>
-                  <span className="w-fit rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-500 ring-1 ring-slate-100">
+                  <span className="w-fit rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-blue-50 ring-1 ring-white/15">
                     Sorted from uploaded workbook
                   </span>
                 </div>
 
-                <div className="divide-y divide-slate-100 bg-white">
+                <div className="space-y-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/50 p-4">
                   {filteredRows.map((row) => {
                     const recommendationClass =
                       row.recommendation === 'Yes'
@@ -4096,11 +4131,13 @@ function ProposalReviewPanel({
                           ? 'bg-rose-50 text-rose-700 ring-rose-100'
                           : 'bg-amber-50 text-amber-700 ring-amber-100'
                     return (
-                      <article key={row.id} className="p-4 transition hover:bg-emerald-50/30 sm:p-5">
+                      <article key={row.id} className="overflow-hidden rounded-[26px] border border-blue-100 bg-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-2xl hover:shadow-blue-950/10">
+                        <div className="h-1.5 bg-gradient-to-r from-blue-600 via-emerald-500 to-amber-400" />
+                        <div className="p-4 sm:p-5">
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
                           <div className="min-w-0">
                             <div className="flex items-start gap-3">
-                              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-200 bg-emerald-50 text-sm font-black text-emerald-700">
+                              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blue-700 to-emerald-700 text-sm font-black text-white shadow-lg shadow-blue-950/20">
                                 {row.serial}
                               </span>
                               <div className="min-w-0">
@@ -4116,7 +4153,7 @@ function ProposalReviewPanel({
                                   {row.submittedBy || 'Not submitted'} - {row.phase}
                                 </p>
                                 {row.sourceRemarks ? (
-                                  <p className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-medium leading-6 text-slate-600">
+                                  <p className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-sm font-medium leading-6 text-slate-700">
                                     {row.sourceRemarks}
                                   </p>
                                 ) : null}
@@ -4151,13 +4188,13 @@ function ProposalReviewPanel({
                           </div>
                         </div>
 
-                        <div className="mt-4 rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-white p-3 shadow-sm shadow-emerald-950/5">
+                        <div className="mt-4 rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-emerald-50 p-3 shadow-sm shadow-amber-950/5">
                           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <p className="form-label">Review decision</p>
-                              <p className="mt-1 text-xs font-semibold text-slate-500">Engineering assessment, recommendation, and command remarks</p>
+                              <p className="text-xs font-black uppercase tracking-wide text-amber-700">Review decision</p>
+                              <p className="mt-1 text-xs font-semibold text-slate-600">Engineering assessment, recommendation, and command remarks</p>
                             </div>
-                            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-100">
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-100">
                               Row #{row.serial}
                             </span>
                           </div>
@@ -4201,6 +4238,7 @@ function ProposalReviewPanel({
                               />
                             </label>
                           </div>
+                        </div>
                         </div>
                       </article>
                     )
