@@ -4496,8 +4496,6 @@ export default function App() {
   const [printRequested, setPrintRequested] = useState(false)
   const [printBusy, setPrintBusy] = useState(false)
   const [pptBusy, setPptBusy] = useState(false)
-  const [latestSavedReportStamp, setLatestSavedReportStamp] = useState('')
-  const [latestSavedPptStamp, setLatestSavedPptStamp] = useState('')
   const [pptReportReady, setPptReportReady] = useState(false)
   const [pptReportBuilding, setPptReportBuilding] = useState(false)
   const [adminReturnTab, setAdminReturnTab] = useState('admin')
@@ -4518,13 +4516,9 @@ export default function App() {
   const refreshReportStatus = useCallback(async () => {
     try {
       const status = await fetchJsonFromApi(reportStatusUrl())
-      setLatestSavedReportStamp(status.pdf?.readyStamp || status.readyStamp || status.readyTime || '')
-      setLatestSavedPptStamp(status.ppt?.readyStamp || '')
       setPptReportReady(Boolean(status.ppt?.ready))
       setPptReportBuilding(Boolean(status.ppt?.building))
     } catch {
-      setLatestSavedReportStamp('')
-      setLatestSavedPptStamp('')
       setPptReportReady(false)
       setPptReportBuilding(false)
     }
@@ -5542,7 +5536,7 @@ export default function App() {
               title="Download the print-ready completed-project PDF"
             >
               {printBusy ? <RefreshCw size={15} className="animate-spin" /> : <Printer size={15} />}
-              {printBusy ? 'Preparing' : 'Print PDF'}
+              {printBusy ? 'Preparing' : 'PDF'}
             </button>
             <button
               type="button"
@@ -5552,25 +5546,8 @@ export default function App() {
               title={pptReportBuilding ? 'A newer PPT is rebuilding in the background' : 'Download the latest saved PowerPoint report'}
             >
               {pptBusy ? <RefreshCw size={15} className="animate-spin" /> : <FileDown size={15} />}
-              {pptBusy ? 'Preparing' : 'Print PPT'}
+              {pptBusy ? 'Preparing' : 'PPT'}
             </button>
-            {latestSavedPptStamp ? (
-              <span
-                className="text-right text-xs font-bold tabular-nums text-blue-400"
-                title={pptReportBuilding ? 'Latest saved PPT. A newer one is rebuilding.' : 'Latest saved PPT date and time'}
-              >
-                PPT: {latestSavedPptStamp}
-                {pptReportBuilding ? ' · updating' : ''}
-              </span>
-            ) : null}
-            {latestSavedReportStamp ? (
-              <span
-                className="text-right text-xs font-bold tabular-nums text-slate-400"
-                title="Latest saved PDF date and time"
-              >
-                {latestSavedReportStamp}
-              </span>
-            ) : null}
           </div>
         </div>
 
