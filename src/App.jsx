@@ -3765,8 +3765,6 @@ function ProposalReviewPanel({
   onSelectDocument,
   onUploadDocument,
   onSaveDocument,
-  adminAuthed,
-  onRequestAdmin,
   notify,
 }) {
   const fileInputRef = useRef(null)
@@ -3852,11 +3850,6 @@ function ProposalReviewPanel({
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    if (!adminAuthed) {
-      onRequestAdmin()
-      notify('Unlock required', 'Unlock admin access before uploading proposal documents.', 'info')
-      return
-    }
 
     setUploading(true)
     try {
@@ -3870,10 +3863,6 @@ function ProposalReviewPanel({
   }
 
   function updateRow(rowId, field, value) {
-    if (!adminAuthed) {
-      onRequestAdmin()
-      return
-    }
     setDraftDocument((current) => {
       if (!current) return current
       return cleanProposalDocument({
@@ -3884,8 +3873,7 @@ function ProposalReviewPanel({
   }
 
   function saveDraft() {
-    if (!draftDocument || !adminAuthed) {
-      onRequestAdmin()
+    if (!draftDocument) {
       return
     }
     onSaveDocument(draftDocument)
@@ -3967,12 +3955,6 @@ function ProposalReviewPanel({
             </p>
           </div>
           <div className="relative flex flex-wrap items-center gap-2 xl:justify-end">
-            {!adminAuthed ? (
-              <button type="button" onClick={onRequestAdmin} className="btn-secondary border-white/20 bg-white/10 text-white hover:bg-white/15">
-                <LockKeyhole size={15} />
-                Unlock to edit
-              </button>
-            ) : null}
             <input
               ref={fileInputRef}
               type="file"
@@ -3982,7 +3964,7 @@ function ProposalReviewPanel({
             />
             <button
               type="button"
-              onClick={() => (adminAuthed ? fileInputRef.current?.click() : onRequestAdmin())}
+              onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-blue-950 shadow-lg shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-70"
             >
@@ -4152,9 +4134,9 @@ function ProposalReviewPanel({
                     <button
                       type="button"
                       onClick={saveDraft}
-                      disabled={!hasUnsavedChanges || !adminAuthed}
+                      disabled={!hasUnsavedChanges}
                       className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-blue-950 shadow-lg shadow-slate-950/20 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      title={!adminAuthed ? 'Unlock admin access to save' : 'Save proposal assessment'}
+                      title="Save proposal assessment"
                     >
                       <Save size={15} />
                       {hasUnsavedChanges ? 'Save assessment' : 'Saved'}
@@ -4310,7 +4292,6 @@ function ProposalReviewPanel({
                               <select
                                 value={row.assessedByEngr}
                                 onChange={(event) => updateRow(row.id, 'assessedByEngr', event.target.value)}
-                                disabled={!adminAuthed}
                                 className="form-input h-11 text-sm"
                               >
                                 <option value="">Select assessment</option>
@@ -4324,7 +4305,6 @@ function ProposalReviewPanel({
                               <select
                                 value={row.recommendation}
                                 onChange={(event) => updateRow(row.id, 'recommendation', event.target.value)}
-                                disabled={!adminAuthed}
                                 className="form-input h-11 text-sm"
                               >
                                 <option value="">Pending</option>
@@ -4338,7 +4318,6 @@ function ProposalReviewPanel({
                               <textarea
                                 value={row.remarksComd}
                                 onChange={(event) => updateRow(row.id, 'remarksComd', event.target.value)}
-                                disabled={!adminAuthed}
                                 className="form-input min-h-[84px] resize-y text-sm leading-6"
                                 placeholder="Remarks"
                               />
@@ -5573,8 +5552,6 @@ export default function App() {
             onSelectDocument={setSelectedProposalDocumentId}
             onUploadDocument={addProposalDocument}
             onSaveDocument={updateProposalDocument}
-            adminAuthed={adminAuthed}
-            onRequestAdmin={() => openAdminEditor('', 'ee-p3')}
             notify={notify}
           />
         ) : null}
