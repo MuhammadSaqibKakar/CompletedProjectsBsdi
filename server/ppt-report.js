@@ -677,6 +677,39 @@ export function pptReportFileName(filters = {}) {
   return `bsdi-report-${sanitizePathPart(filters.phase || REPORT_TOTAL_PHASE)}-${sanitizePathPart(filters.district || REPORT_ALL_DISTRICTS)}.pptx`
 }
 
+export async function getPptReportStatus({ reportsDir, filters = {} }) {
+  await fs.mkdir(reportsDir, { recursive: true })
+  const fileName = pptReportFileName(filters)
+  const reportPath = path.join(reportsDir, fileName)
+  try {
+    const stat = await fs.stat(reportPath)
+    return {
+      ready: true,
+      fileName,
+      readyAt: stat.mtime.toISOString(),
+      size: stat.size,
+    }
+  } catch {
+    return {
+      ready: false,
+      fileName,
+      readyAt: '',
+      size: 0,
+    }
+  }
+}
+
+export async function clearPptReportCache(reportsDir, keepNames = []) {
+  await fs.mkdir(reportsDir, { recursive: true })
+  const keep = new Set(keepNames)
+  const entries = await fs.readdir(reportsDir, { withFileTypes: true })
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.pptx') && !keep.has(entry.name))
+      .map((entry) => fs.rm(path.join(reportsDir, entry.name), { force: true })),
+  )
+}
+
 export async function generateCachedPptReport({ data, reportsDir, rootDir, dataDir, filters = {}, force = false }) {
   const phase = filters.phase || REPORT_TOTAL_PHASE
   const district = filters.district || REPORT_ALL_DISTRICTS

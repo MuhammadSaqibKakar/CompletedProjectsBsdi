@@ -5,7 +5,11 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
-import { generateCachedPptReport } from './ppt-report.js'
+import {
+  clearPptReportCache,
+  generateCachedPptReport,
+  getPptReportStatus,
+} from './ppt-report.js'
 import { clearReportCache, generateCachedReport, getReportStatus } from './report.js'
 import { createDashboardStorage } from './storage.js'
 
@@ -27,6 +31,7 @@ const requireMysqlStorage =
 let defaultReportJob = Promise.resolve()
 let queuedDefaultReportData = null
 let defaultReportBuilding = false
+let defaultPptReportBuilding = false
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -45,7 +50,14 @@ const upload = multer({
 
 const app = express()
 
-app.use(compression())
+app.use(compression({
+  filter: (req, res) => {
+    // Reports and media are already compressed binary files. Re-compressing
+    // PPTX/PDF/MP4/JPG delays downloads without reducing size meaningfully.
+    if (req.path.startsWith('/api/report/') || req.path.startsWith('/synced-media/')) return false
+    return compression.filter(req, res)
+  },
+}))
 app.use(express.json({ limit: '100mb' }))
 app.use('/synced-media', express.static(mediaDir, {
   acceptRanges: true,
@@ -210,7 +222,10 @@ async function pptReportDownloadName(reportPath) {
   return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pptx`
 }
 
-async function rebuildDefaultReport(data) {
+async function rebuildDefaultReports(data) {
+  const defaultFilters = { phase: 'Total', district: 'All Districts' }
+  const errors = []
+
   defaultReportBuilding = true
   try {
     await clearReportCache(reportsDir)
@@ -219,12 +234,33 @@ async function rebuildDefaultReport(data) {
       reportsDir,
       rootDir,
       dataDir,
-      filters: { phase: 'Total', district: 'All Districts' },
+      filters: defaultFilters,
       force: true,
     })
+  } catch (error) {
+    errors.push(error)
   } finally {
     defaultReportBuilding = false
   }
+
+  defaultPptReportBuilding = true
+  try {
+    const reportPath = await generateCachedPptReport({
+      data,
+      reportsDir,
+      rootDir,
+      dataDir,
+      filters: defaultFilters,
+      force: true,
+    })
+    await clearPptReportCache(reportsDir, [path.basename(reportPath)])
+  } catch (error) {
+    errors.push(error)
+  } finally {
+    defaultPptReportBuilding = false
+  }
+
+  if (errors.length) throw errors[0]
 }
 
 function queueDefaultReportRebuild(data) {
@@ -235,7 +271,7 @@ function queueDefaultReportRebuild(data) {
       while (queuedDefaultReportData) {
         const nextData = queuedDefaultReportData
         queuedDefaultReportData = null
-        await rebuildDefaultReport(nextData)
+        await rebuildDefaultReports(nextData)
       }
     })
     .catch((error) => {
@@ -305,13 +341,14 @@ app.get('/api/report/pptx', async (req, res, next) => {
       phase: req.query.phase || 'Total',
       district: req.query.district || 'All Districts',
     }
+    const force = req.query.force === '1'
     const reportPath = await generateCachedPptReport({
       data: state,
       reportsDir,
       rootDir,
       dataDir,
       filters,
-      force: req.query.force !== '0',
+      force,
     })
     res.set('Cache-Control', 'no-store')
     res.download(reportPath, await pptReportDownloadName(reportPath))
@@ -327,11 +364,26 @@ app.get('/api/report/status', async (req, res, next) => {
       district: req.query.district || 'All Districts',
     }
     const status = await getReportStatus({ reportsDir, filters })
+    const pptStatus = await getPptReportStatus({ reportsDir, filters })
+    const isDefault = isDefaultReportFilter(filters)
+    const anyDefaultReportWork = isDefault
+      ? defaultReportBuilding || defaultPptReportBuilding || Boolean(queuedDefaultReportData)
+      : false
     res.set('Cache-Control', 'no-store')
     res.json({
       ...status,
-      building: isDefaultReportFilter(filters) ? defaultReportBuilding || Boolean(queuedDefaultReportData) : false,
+      building: anyDefaultReportWork,
       readyStamp: status.readyAt ? pakistanDisplayStamp(new Date(status.readyAt)) : '',
+      pdf: {
+        ...status,
+        building: isDefault ? defaultReportBuilding || Boolean(queuedDefaultReportData) : false,
+        readyStamp: status.readyAt ? pakistanDisplayStamp(new Date(status.readyAt)) : '',
+      },
+      ppt: {
+        ...pptStatus,
+        building: anyDefaultReportWork,
+        readyStamp: pptStatus.readyAt ? pakistanDisplayStamp(new Date(pptStatus.readyAt)) : '',
+      },
     })
   } catch (error) {
     next(error)

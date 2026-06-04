@@ -570,7 +570,6 @@ function pptReportDownloadUrl() {
     phase: 'Total',
     district: DISTRICT_FILTER_ALL,
     download: '1',
-    force: '1',
     t: String(Date.now()),
   })
   return `${API_PPT_REPORT_ENDPOINT}?${params.toString()}`
@@ -4498,6 +4497,9 @@ export default function App() {
   const [printBusy, setPrintBusy] = useState(false)
   const [pptBusy, setPptBusy] = useState(false)
   const [latestSavedReportStamp, setLatestSavedReportStamp] = useState('')
+  const [latestSavedPptStamp, setLatestSavedPptStamp] = useState('')
+  const [pptReportReady, setPptReportReady] = useState(false)
+  const [pptReportBuilding, setPptReportBuilding] = useState(false)
   const [adminReturnTab, setAdminReturnTab] = useState('admin')
 
   const notify = useCallback((title, message = '', type = 'success') => {
@@ -4516,9 +4518,15 @@ export default function App() {
   const refreshReportStatus = useCallback(async () => {
     try {
       const status = await fetchJsonFromApi(reportStatusUrl())
-      setLatestSavedReportStamp(status.readyStamp || status.readyTime || '')
+      setLatestSavedReportStamp(status.pdf?.readyStamp || status.readyStamp || status.readyTime || '')
+      setLatestSavedPptStamp(status.ppt?.readyStamp || '')
+      setPptReportReady(Boolean(status.ppt?.ready))
+      setPptReportBuilding(Boolean(status.ppt?.building))
     } catch {
       setLatestSavedReportStamp('')
+      setLatestSavedPptStamp('')
+      setPptReportReady(false)
+      setPptReportBuilding(false)
     }
   }, [])
 
@@ -5304,6 +5312,11 @@ export default function App() {
 
   function printPptReport() {
     if (pptBusy) return
+    if (!pptReportReady) {
+      notify('PPT is preparing', 'The first saved PPT is still being built. Try again in a moment.', 'info')
+      refreshReportStatus()
+      return
+    }
     setPptBusy(true)
 
     const link = document.createElement('a')
@@ -5313,8 +5326,11 @@ export default function App() {
     link.click()
     link.remove()
 
-    notify('PPT download started', 'The deck is generated from the latest database data.', 'success')
-    window.setTimeout(() => setPptBusy(false), 2500)
+    notify('PPT download started', 'Downloading the latest saved PowerPoint deck.', 'success')
+    window.setTimeout(() => {
+      setPptBusy(false)
+      refreshReportStatus()
+    }, 1200)
   }
 
   if (loadError) {
@@ -5533,11 +5549,20 @@ export default function App() {
               onClick={printPptReport}
               disabled={pptBusy}
               className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-700 to-indigo-700 px-4 text-sm font-bold text-white shadow-sm transition hover:from-blue-800 hover:to-indigo-800 disabled:cursor-not-allowed disabled:opacity-70"
-              title="Download an editable PowerPoint report with clickable section tags"
+              title={pptReportBuilding ? 'A newer PPT is rebuilding in the background' : 'Download the latest saved PowerPoint report'}
             >
               {pptBusy ? <RefreshCw size={15} className="animate-spin" /> : <FileDown size={15} />}
               {pptBusy ? 'Preparing' : 'Print PPT'}
             </button>
+            {latestSavedPptStamp ? (
+              <span
+                className="text-right text-xs font-bold tabular-nums text-blue-400"
+                title={pptReportBuilding ? 'Latest saved PPT. A newer one is rebuilding.' : 'Latest saved PPT date and time'}
+              >
+                PPT: {latestSavedPptStamp}
+                {pptReportBuilding ? ' · updating' : ''}
+              </span>
+            ) : null}
             {latestSavedReportStamp ? (
               <span
                 className="text-right text-xs font-bold tabular-nums text-slate-400"
