@@ -104,6 +104,9 @@ const MAP_POINTS = {
 const phaseOptions = ['Total', 'Phase 1', 'Phase 2', 'Phase 3']
 const projectPhaseOptions = phaseOptions.filter((phase) => phase !== 'Total')
 const DISTRICT_FILTER_ALL = 'All Districts'
+const REQUIRED_DIVISION_DISTRICTS = {
+  'Quetta Division': ['Quetta'],
+}
 const pakistanDateFormatter = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
   month: 'short',
@@ -623,6 +626,11 @@ function cleanDivisionCatalog(divisions = [], projects = []) {
     const districtName = project.district || ''
     const current = byName.get(divisionName) || { id: toId(divisionName), name: divisionName, districts: [] }
     current.districts = unique([...current.districts, districtName])
+    byName.set(divisionName, current)
+  }
+  for (const [divisionName, requiredDistricts] of Object.entries(REQUIRED_DIVISION_DISTRICTS)) {
+    const current = byName.get(divisionName) || { id: toId(divisionName), name: divisionName, districts: [] }
+    current.districts = unique([...current.districts, ...requiredDistricts])
     byName.set(divisionName, current)
   }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
@@ -2472,9 +2480,10 @@ function ProjectDetailsFlow({
           count: projects.filter((project) => project.division === name).length,
         }
         const divisionProjects = projects.filter((project) => project.division === item.name)
+        const catalogDistricts = divisionCatalog.find((division) => division.name === item.name)?.districts || []
         return {
           ...item,
-          districts: unique(divisionProjects.map((project) => project.district)).length,
+          districts: unique([...catalogDistricts, ...divisionProjects.map((project) => project.district)]).length,
           media: divisionProjects.reduce((sum, project) => sum + (project.media?.length || 0), 0),
           categories: countBy(divisionProjects, 'category').slice(0, 3),
         }
@@ -2490,12 +2499,8 @@ function ProjectDetailsFlow({
 
   const districtCards = useMemo(
     () => {
-      const names = divisionProjects.length
-        ? unique(divisionProjects.map((project) => project.district))
-        : unique([
-            ...(divisionCatalog.find((division) => division.name === selectedDivision)?.districts || []),
-            ...divisionProjects.map((project) => project.district),
-          ])
+      const catalogDistricts = divisionCatalog.find((division) => division.name === selectedDivision)?.districts || []
+      const names = unique([...catalogDistricts, ...divisionProjects.map((project) => project.district)])
       return names.map((name) => {
         const item = {
           name,
