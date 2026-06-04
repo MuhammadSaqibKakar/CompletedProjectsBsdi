@@ -5,11 +5,6 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
-import {
-  clearPptReportCache,
-  generateCachedPptReport,
-  getPptReportStatus,
-} from './ppt-report.js'
 import { clearReportCache, generateCachedReport, getReportStatus } from './report.js'
 import { createDashboardStorage } from './storage.js'
 
@@ -32,7 +27,6 @@ const requireMysqlStorage =
 let defaultReportJob = Promise.resolve()
 let queuedDefaultReportData = null
 let defaultReportBuilding = false
-let defaultPptReportBuilding = false
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -218,11 +212,6 @@ async function reportDownloadName(reportPath) {
   return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pdf`
 }
 
-async function pptReportDownloadName(reportPath) {
-  const stat = await fs.stat(reportPath)
-  return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pptx`
-}
-
 async function findCanonicalPptPath() {
   const candidates = [
     process.env.BSDI_CANONICAL_PPTX_PATH,
@@ -282,23 +271,6 @@ async function rebuildDefaultReports(data) {
     errors.push(error)
   } finally {
     defaultReportBuilding = false
-  }
-
-  defaultPptReportBuilding = true
-  try {
-    const reportPath = await generateCachedPptReport({
-      data,
-      reportsDir,
-      rootDir,
-      dataDir,
-      filters: defaultFilters,
-      force: true,
-    })
-    await clearPptReportCache(reportsDir, [path.basename(reportPath)])
-  } catch (error) {
-    errors.push(error)
-  } finally {
-    defaultPptReportBuilding = false
   }
 
   if (errors.length) throw errors[0]
@@ -378,28 +350,21 @@ app.get('/api/report/pdf', async (req, res, next) => {
 app.get('/api/report/pptx', async (req, res, next) => {
   try {
     const canonicalPpt = await findCanonicalPptPath()
-    if (canonicalPpt) {
-      res.set('Cache-Control', 'no-store')
-      res.download(canonicalPpt.filePath, path.basename(canonicalPpt.filePath))
+    if (!canonicalPpt) {
+      res.status(404).json({
+        error: 'Exact canonical PowerPoint is missing on the server',
+        fileName: canonicalPptFileName,
+        expectedLocations: [
+          'BSDI_CANONICAL_PPTX_PATH',
+          'BSDI_TEMPLATE_PPTX_PATH',
+          'BSDI_DATA_DIR/templates/Completed_BSDI-14-03-2026.pptx',
+        ],
+      })
       return
     }
 
-    const state = await readDashboardState()
-    const filters = {
-      phase: req.query.phase || 'Total',
-      district: req.query.district || 'All Districts',
-    }
-    const force = req.query.force === '1'
-    const reportPath = await generateCachedPptReport({
-      data: state,
-      reportsDir,
-      rootDir,
-      dataDir,
-      filters,
-      force,
-    })
     res.set('Cache-Control', 'no-store')
-    res.download(reportPath, await pptReportDownloadName(reportPath))
+    res.download(canonicalPpt.filePath, path.basename(canonicalPpt.filePath))
   } catch (error) {
     next(error)
   }
@@ -412,12 +377,10 @@ app.get('/api/report/status', async (req, res, next) => {
       district: req.query.district || 'All Districts',
     }
     const status = await getReportStatus({ reportsDir, filters })
-    const pptStatus = await getPptReportStatus({ reportsDir, filters })
     const templatePptStatus = await canonicalPptStatus()
-    const activePptStatus = templatePptStatus.ready ? templatePptStatus : pptStatus
     const isDefault = isDefaultReportFilter(filters)
     const anyDefaultReportWork = isDefault
-      ? defaultReportBuilding || defaultPptReportBuilding || Boolean(queuedDefaultReportData)
+      ? defaultReportBuilding || Boolean(queuedDefaultReportData)
       : false
     res.set('Cache-Control', 'no-store')
     res.json({
@@ -430,9 +393,9 @@ app.get('/api/report/status', async (req, res, next) => {
         readyStamp: status.readyAt ? pakistanDisplayStamp(new Date(status.readyAt)) : '',
       },
       ppt: {
-        ...activePptStatus,
-        building: templatePptStatus.ready ? false : anyDefaultReportWork,
-        readyStamp: activePptStatus.readyAt ? pakistanDisplayStamp(new Date(activePptStatus.readyAt)) : '',
+        ...templatePptStatus,
+        building: false,
+        readyStamp: templatePptStatus.readyAt ? pakistanDisplayStamp(new Date(templatePptStatus.readyAt)) : '',
       },
     })
   } catch (error) {

@@ -5312,7 +5312,7 @@ export default function App() {
   function printPptReport() {
     if (pptBusy) return
     if (!pptReportReady) {
-      notify('PPT is preparing', 'The first saved PPT is still being built. Try again in a moment.', 'info')
+      notify('Exact PPT is missing', 'Upload Completed_BSDI-14-03-2026.pptx to the server template folder, then try again.', 'error')
       refreshReportStatus()
       return
     }
