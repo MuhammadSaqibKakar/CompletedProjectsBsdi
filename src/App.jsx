@@ -54,6 +54,7 @@ const API_MEDIA_ENDPOINT = `${API_BASE_URL}/api/media`
 const API_REPORT_ENDPOINT = `${API_BASE_URL}/api/report/pdf`
 const API_PPT_REPORT_ENDPOINT = `${API_BASE_URL}/api/report/pptx`
 const API_REPORT_STATUS_ENDPOINT = `${API_BASE_URL}/api/report/status`
+const API_DATABASE_MEDIA_ENDPOINT = `${API_BASE_URL}/api/database-media`
 const API_UNAVAILABLE_MESSAGE = 'Shared sync server is not enabled on this deployment'
 const BRAND_LOGO = '/brand/bsdi-logo.png'
 const BALOCHISTAN_MAP = '/brand/balochistan-district-map-print.jpg'
@@ -553,9 +554,34 @@ function getProjectMapPoint(projects = [], fallbackName = '') {
   }
 }
 
-function resolveSyncedMediaSrc(src) {
-  if (!API_BASE_URL || !src || !src.startsWith('/synced-media/')) return src
-  return `${API_BASE_URL}${src}`
+function encodeMediaRelativePath(src, prefix) {
+  return String(src || '')
+    .slice(prefix.length)
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+}
+
+function restoreStoredMediaSrc(src) {
+  const value = String(src || '')
+  const apiPrefix = `${API_DATABASE_MEDIA_ENDPOINT}/`
+  const relativeApiPrefix = '/api/database-media/'
+  if (value.startsWith(apiPrefix)) {
+    return `/database/media/${decodeURIComponent(value.slice(apiPrefix.length))}`
+  }
+  if (value.startsWith(relativeApiPrefix)) {
+    return `/database/media/${decodeURIComponent(value.slice(relativeApiPrefix.length))}`
+  }
+  return value
+}
+
+function resolveMediaSrc(src) {
+  const storedSrc = restoreStoredMediaSrc(src)
+  if (storedSrc.startsWith('/database/media/')) {
+    return `${API_DATABASE_MEDIA_ENDPOINT}/${encodeMediaRelativePath(storedSrc, '/database/media/')}`
+  }
+  if (API_BASE_URL && storedSrc.startsWith('/synced-media/')) return `${API_BASE_URL}${storedSrc}`
+  return storedSrc
 }
 
 function reportDownloadUrl() {
@@ -734,7 +760,7 @@ function mediaFromText(value) {
 }
 
 function mediaToText(media = []) {
-  return media.map((item) => item.src).join('\n')
+  return media.map((item) => restoreStoredMediaSrc(item.src)).join('\n')
 }
 
 function cleanProject(project) {
@@ -751,7 +777,7 @@ function cleanProject(project) {
         id: item.id || `${id}-media-${String(index + 1).padStart(2, '0')}`,
         projectId: item.projectId || id,
         type: item.type || 'image',
-        src: resolveSyncedMediaSrc(item.src || ''),
+        src: resolveMediaSrc(item.src || ''),
         name: item.name || item.originalName || `media-${index + 1}`,
         order: item.order || index + 1,
       }))
@@ -933,7 +959,7 @@ function serializeProjects(projects) {
     ...project,
     // Object URLs are session-only; keep the IndexedDB key and recreate URLs on load.
     media: (project.media || []).map((item) =>
-      item.localBlob ? { ...item, src: '' } : item,
+      item.localBlob ? { ...item, src: '' } : { ...item, src: restoreStoredMediaSrc(item.src) },
     ),
   }))
 }
@@ -5082,7 +5108,7 @@ export default function App() {
 
     return (result.media || []).map((item) => ({
       ...item,
-      src: resolveSyncedMediaSrc(item.src || ''),
+      src: resolveMediaSrc(item.src || ''),
     }))
   }
 

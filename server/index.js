@@ -71,6 +71,7 @@ app.use(compression({
     // PPTX/PDF/MP4/JPG delays downloads without reducing size meaningfully.
     if (
       req.path.startsWith('/api/report/') ||
+      req.path.startsWith('/api/database-media/') ||
       req.path.startsWith('/synced-media/') ||
       req.path.startsWith('/database/media/')
     ) return false
@@ -137,6 +138,7 @@ async function serveDatabaseMedia(req, res, next) {
 }
 
 app.use('/database/media', serveDatabaseMedia)
+app.use('/api/database-media', serveDatabaseMedia)
 
 function sanitizePathPart(value, fallback = 'item') {
   return String(value || fallback)
