@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { clearReportCache, generateCachedReport, getReportStatus } from './report.js'
 import { createDashboardStorage } from './storage.js'
+import {
+  generateTemplatePptReport,
+  getTemplatePptDownloadPath,
+  getTemplatePptStatus,
+  hasWebsiteCreatedProjects,
+} from './ppt-template-report.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -27,6 +33,9 @@ const requireMysqlStorage =
 let defaultReportJob = Promise.resolve()
 let queuedDefaultReportData = null
 let defaultReportBuilding = false
+let templatePptJob = Promise.resolve()
+let queuedTemplatePptData = null
+let templatePptBuilding = false
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -212,6 +221,11 @@ async function reportDownloadName(reportPath) {
   return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pdf`
 }
 
+async function pptDownloadName(reportPath) {
+  const stat = await fs.stat(reportPath)
+  return `BSDI Completed Projects - ${pakistanFileStamp(stat.mtime)}.pptx`
+}
+
 async function findCanonicalPptPath() {
   const candidates = [
     process.env.BSDI_CANONICAL_PPTX_PATH,
@@ -249,6 +263,20 @@ async function canonicalPptStatus() {
     readyAt: template.stat.mtime.toISOString(),
     size: template.stat.size,
     source: 'canonical-template',
+  }
+}
+
+async function currentPptStatus(data) {
+  const template = await findCanonicalPptPath()
+  if (!template) return canonicalPptStatus()
+  const status = await getTemplatePptStatus({
+    data,
+    templatePath: template.filePath,
+    reportsDir,
+  })
+  return {
+    ...status,
+    building: templatePptBuilding || Boolean(queuedTemplatePptData),
   }
 }
 
@@ -291,6 +319,43 @@ function queueDefaultReportRebuild(data) {
       console.warn(`Default report rebuild failed: ${error.message}`)
     })
   return defaultReportJob
+}
+
+async function rebuildTemplatePptReport(data) {
+  const template = await findCanonicalPptPath()
+  if (!template) {
+    console.warn(`Template PPT rebuild skipped: ${canonicalPptFileName} is missing`)
+    return null
+  }
+
+  templatePptBuilding = true
+  try {
+    return await generateTemplatePptReport({
+      data,
+      templatePath: template.filePath,
+      reportsDir,
+      mediaDir,
+    })
+  } finally {
+    templatePptBuilding = false
+  }
+}
+
+function queueTemplatePptRebuild(data) {
+  queuedTemplatePptData = data
+  templatePptJob = templatePptJob
+    .catch(() => undefined)
+    .then(async () => {
+      while (queuedTemplatePptData) {
+        const nextData = queuedTemplatePptData
+        queuedTemplatePptData = null
+        await rebuildTemplatePptReport(nextData)
+      }
+    })
+    .catch((error) => {
+      console.warn(`Template PPT rebuild failed: ${error.message}`)
+    })
+  return templatePptJob
 }
 
 app.get('/api/health', async (_req, res, next) => {
@@ -349,6 +414,7 @@ app.get('/api/report/pdf', async (req, res, next) => {
 
 app.get('/api/report/pptx', async (req, res, next) => {
   try {
+    const state = await readDashboardState()
     const canonicalPpt = await findCanonicalPptPath()
     if (!canonicalPpt) {
       res.status(404).json({
@@ -363,8 +429,18 @@ app.get('/api/report/pptx', async (req, res, next) => {
       return
     }
 
+    if (hasWebsiteCreatedProjects(state)) {
+      await templatePptJob.catch(() => undefined)
+    }
+
+    const pptPath = await getTemplatePptDownloadPath({
+      data: state,
+      templatePath: canonicalPpt.filePath,
+      reportsDir,
+    })
+
     res.set('Cache-Control', 'no-store')
-    res.download(canonicalPpt.filePath, path.basename(canonicalPpt.filePath))
+    res.download(pptPath, await pptDownloadName(pptPath))
   } catch (error) {
     next(error)
   }
@@ -377,7 +453,8 @@ app.get('/api/report/status', async (req, res, next) => {
       district: req.query.district || 'All Districts',
     }
     const status = await getReportStatus({ reportsDir, filters })
-    const templatePptStatus = await canonicalPptStatus()
+    const state = await readDashboardState()
+    const templatePptStatus = await currentPptStatus(state)
     const isDefault = isDefaultReportFilter(filters)
     const anyDefaultReportWork = isDefault
       ? defaultReportBuilding || Boolean(queuedDefaultReportData)
@@ -394,7 +471,7 @@ app.get('/api/report/status', async (req, res, next) => {
       },
       ppt: {
         ...templatePptStatus,
-        building: false,
+        building: templatePptStatus.building,
         readyStamp: templatePptStatus.readyAt ? pakistanDisplayStamp(new Date(templatePptStatus.readyAt)) : '',
       },
     })
@@ -415,6 +492,7 @@ app.put('/api/state', async (req, res, next) => {
     const merged = mergeDashboardState(current, incoming)
     const saved = await dashboardStorage.writeState(merged, expectedRevisionFromRequest(req, incoming))
     queueDefaultReportRebuild(saved)
+    queueTemplatePptRebuild(saved)
     res.json({
       ok: true,
       updatedAt: saved.updatedAt,
@@ -509,7 +587,10 @@ app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
   readDashboardState()
-    .then((state) => queueDefaultReportRebuild(state))
+    .then((state) => {
+      queueDefaultReportRebuild(state)
+      queueTemplatePptRebuild(state)
+    })
     .catch((error) => {
       console.warn(`Default report startup rebuild skipped: ${error.message}`)
     })
