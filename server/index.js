@@ -13,6 +13,12 @@ import {
   getTemplatePptStatus,
   hasWebsiteCreatedProjects,
 } from './ppt-template-report.js'
+import {
+  databaseMediaDirectory,
+  firstUsableMediaPath,
+  restoreMissingDatabaseMedia,
+  restoreSingleDatabaseMedia,
+} from './media-library.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -20,6 +26,7 @@ const distDir = path.join(rootDir, 'dist')
 const bundledDbPath = path.join(rootDir, 'public', 'database', 'bsdi-db.json')
 const dataDir = path.resolve(process.env.BSDI_DATA_DIR || path.join(rootDir, 'server-data'))
 const mediaDir = path.join(dataDir, 'media')
+const databaseMediaDir = databaseMediaDirectory(dataDir)
 const tempDir = path.join(dataDir, 'tmp')
 const reportsDir = path.join(dataDir, 'generated-reports')
 const liveDbPath = path.join(dataDir, 'bsdi-db.json')
@@ -36,11 +43,15 @@ let defaultReportBuilding = false
 let templatePptJob = Promise.resolve()
 let queuedTemplatePptData = null
 let templatePptBuilding = false
+let mediaRestoreJob = Promise.resolve()
+let queuedMediaRestoreData = null
+let mediaRestoreRunning = false
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
 fsSync.mkdirSync(dataDir, { recursive: true })
 fsSync.mkdirSync(mediaDir, { recursive: true })
+fsSync.mkdirSync(databaseMediaDir, { recursive: true })
 fsSync.mkdirSync(tempDir, { recursive: true })
 fsSync.mkdirSync(reportsDir, { recursive: true })
 
@@ -58,7 +69,11 @@ app.use(compression({
   filter: (req, res) => {
     // Reports and media are already compressed binary files. Re-compressing
     // PPTX/PDF/MP4/JPG delays downloads without reducing size meaningfully.
-    if (req.path.startsWith('/api/report/') || req.path.startsWith('/synced-media/')) return false
+    if (
+      req.path.startsWith('/api/report/') ||
+      req.path.startsWith('/synced-media/') ||
+      req.path.startsWith('/database/media/')
+    ) return false
     return compression.filter(req, res)
   },
 }))
@@ -68,6 +83,60 @@ app.use('/synced-media', express.static(mediaDir, {
   immutable: true,
   maxAge: '90d',
 }))
+
+function mediaContentType(filePath) {
+  const extension = path.extname(filePath).toLowerCase()
+  if (extension === '.m4v' || extension === '.mp4') return 'video/mp4'
+  if (extension === '.webm') return 'video/webm'
+  if (extension === '.png') return 'image/png'
+  if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg'
+  if (extension === '.webp') return 'image/webp'
+  return 'application/octet-stream'
+}
+
+function safeDatabaseMediaPath(relativePath, baseDir) {
+  const resolvedBase = path.resolve(baseDir)
+  const resolved = path.resolve(resolvedBase, relativePath)
+  return resolved.startsWith(resolvedBase) ? resolved : ''
+}
+
+async function serveDatabaseMedia(req, res, next) {
+  const relativePath = decodeURIComponent(req.path.replace(/^\/+/, ''))
+  const requestedSrc = `/database/media/${relativePath.replace(/\\/g, '/')}`
+  const persistentPath = safeDatabaseMediaPath(relativePath, databaseMediaDir)
+  const bundledPath = safeDatabaseMediaPath(relativePath, path.join(distDir, 'database', 'media'))
+
+  try {
+    const state = await readDashboardState()
+    const restoredPath = persistentPath && await restoreSingleDatabaseMedia({
+      src: requestedSrc,
+      data: state,
+      templatePath: (await findCanonicalPptPath())?.filePath || '',
+      dataDir,
+    })
+    const mediaPath = await firstUsableMediaPath([
+      restoredPath,
+      persistentPath,
+      bundledPath,
+    ])
+
+    if (!mediaPath) {
+      next()
+      return
+    }
+
+    res.set({
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=7776000, immutable',
+      'Content-Type': mediaContentType(mediaPath),
+    })
+    res.sendFile(mediaPath)
+  } catch (error) {
+    next(error)
+  }
+}
+
+app.use('/database/media', serveDatabaseMedia)
 
 function sanitizePathPart(value, fallback = 'item') {
   return String(value || fallback)
@@ -358,6 +427,45 @@ function queueTemplatePptRebuild(data) {
   return templatePptJob
 }
 
+async function rebuildDatabaseMedia(data) {
+  const template = await findCanonicalPptPath()
+  if (!template) {
+    console.warn(`Database media restore skipped: ${canonicalPptFileName} is missing`)
+    return null
+  }
+
+  mediaRestoreRunning = true
+  try {
+    const result = await restoreMissingDatabaseMedia({
+      data,
+      templatePath: template.filePath,
+      dataDir,
+      logger: console,
+    })
+    console.log(`Database media restore complete: ${result.restored} restored, ${result.skipped} ready, ${result.missing} missing`)
+    return result
+  } finally {
+    mediaRestoreRunning = false
+  }
+}
+
+function queueDatabaseMediaRestore(data) {
+  queuedMediaRestoreData = data
+  mediaRestoreJob = mediaRestoreJob
+    .catch(() => undefined)
+    .then(async () => {
+      while (queuedMediaRestoreData) {
+        const nextData = queuedMediaRestoreData
+        queuedMediaRestoreData = null
+        await rebuildDatabaseMedia(nextData)
+      }
+    })
+    .catch((error) => {
+      console.warn(`Database media restore failed: ${error.message}`)
+    })
+  return mediaRestoreJob
+}
+
 app.get('/api/health', async (_req, res, next) => {
   try {
     const state = await readDashboardState()
@@ -369,6 +477,10 @@ app.get('/api/health', async (_req, res, next) => {
       storage: dashboardStorage.mode,
       mysqlRequired: requireMysqlStorage,
       durableWrites: dashboardStorage.mode === 'mysql' || !requireMysqlStorage,
+      mediaRestore: {
+        running: mediaRestoreRunning,
+        queued: Boolean(queuedMediaRestoreData),
+      },
       revision: state._serverRevision || null,
     })
   } catch (error) {
@@ -493,6 +605,7 @@ app.put('/api/state', async (req, res, next) => {
     const saved = await dashboardStorage.writeState(merged, expectedRevisionFromRequest(req, incoming))
     queueDefaultReportRebuild(saved)
     queueTemplatePptRebuild(saved)
+    queueDatabaseMediaRestore(saved)
     res.json({
       ok: true,
       updatedAt: saved.updatedAt,
@@ -590,6 +703,7 @@ app.listen(port, () => {
     .then((state) => {
       queueDefaultReportRebuild(state)
       queueTemplatePptRebuild(state)
+      queueDatabaseMediaRestore(state)
     })
     .catch((error) => {
       console.warn(`Default report startup rebuild skipped: ${error.message}`)
