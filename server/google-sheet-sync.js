@@ -162,7 +162,9 @@ function parseCostToMillions(value = '') {
   const number = Number(text.match(/-?\d+(?:\.\d+)?/)?.[0] || 0)
   if (!Number.isFinite(number)) return 0
   if (/\bbn\b|billion/.test(text)) return number * 1000
-  return number
+  // BEMIS/school codes sometimes sit in the cost cell in district sheets. Keep
+  // those code-like values out of budget totals unless the source says Bn.
+  return number > 1000 ? 0 : number
 }
 
 function unique(values) {
@@ -178,6 +180,11 @@ function stringifyCell(value) {
 function formatCost(value) {
   const number = toNumber(value)
   if (number == null) return normalizeText(value)
+  const text = String(value ?? '').toLowerCase()
+  if (number > 1000 && !/\bbn\b|billion/.test(text)) return ''
+  if (/\bbn\b|billion/.test(text)) {
+    return `${Number(number.toFixed(number >= 100 ? 1 : number >= 10 ? 2 : 3)).toString()} Bn`
+  }
   return `${Number(number.toFixed(number >= 100 ? 1 : number >= 10 ? 2 : 3)).toString()} Mn`
 }
 
@@ -581,7 +588,7 @@ function dashboardProjectFromSheet(raw, existing, usedIds) {
     districtId: slugify(raw.district),
     district: raw.district,
     category: raw.category || existing?.category || 'Infrastructure',
-    cost: raw.cost || existing?.cost || '',
+    cost: raw.cost || (existing?.sourceType === 'google-sheet' ? '' : existing?.cost || ''),
     duration: existing?.duration || '',
     nitDate: raw.nitDate || existing?.nitDate || '',
     contractor: raw.contractor || existing?.contractor || '',

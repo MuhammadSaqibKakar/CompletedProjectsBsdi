@@ -677,20 +677,29 @@ function countBy(items, key) {
 
 function parseCostToMillions(value) {
   if (!value) return 0
+  const rawText = String(value).toLowerCase()
   const normalized = String(value)
     .toLowerCase()
     .replace(/,/g, '')
-    .replace(/\brs\.?\b|\bpkr\b|\bmillion\b|\bmn\b/g, ' ')
+    .replace(/\brs\.?\b|\bpkr\b|\bmillion\b|\bmn\b|\bbn\b|\bbillion\b/g, ' ')
     .replace(/(\d)\.\s+(\d)/g, '$1.$2')
     .replace(/\s+/g, ' ')
     .trim()
 
   if (/^\d+\s+\d+$/.test(normalized)) {
-    return Number(normalized.replace(/\s+/g, '')) || 0
+    const joined = Number(normalized.replace(/\s+/g, '')) || 0
+    return joined > 1000 && !/\bbn\b|billion/.test(rawText) ? 0 : joined
   }
 
   const number = normalized.match(/\d+(?:\.\d+)?/)
-  return number ? Number(number[0]) : 0
+  if (!number) return 0
+  const amount = Number(number[0])
+  if (!Number.isFinite(amount)) return 0
+  if (/\bbn\b|billion/.test(rawText)) return amount * 1000
+  // Some source sheets place BEMIS/code values in the cost column. A single BSDI
+  // project cost above Rs 1 Bn is treated as bad source data unless explicitly
+  // written as Bn.
+  return amount > 1000 ? 0 : amount
 }
 
 function formatCostMillions(value) {
