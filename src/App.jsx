@@ -10,6 +10,7 @@ import {
   ChartPie,
   Check,
   ChevronRight,
+  ClipboardList,
   CircleDollarSign,
   Cloud,
   CloudOff,
@@ -5302,9 +5303,10 @@ export default function App() {
     { id: 'insights', label: 'Insights', icon: BarChart3 },
     { id: 'visuals', label: 'Visuals', icon: ImageIcon },
     { id: 'details', label: 'Project Details', icon: TableProperties },
+    adminAuthed ? { id: 'ee-p3', label: 'E&E of P3', icon: ClipboardList } : null,
     adminAuthed ? { id: 'admin', label: 'Data Editor', icon: ShieldCheck } : null,
   ].filter(Boolean)
-  const visibleActiveTab = activeTab === 'admin' && !adminAuthed ? 'insights' : activeTab
+  const visibleActiveTab = ['admin', 'ee-p3'].includes(activeTab) && !adminAuthed ? 'insights' : activeTab
   const SyncIcon = syncState.mode === 'offline' ? CloudOff : Cloud
   const syncLabel = syncState.pending
     ? 'Pending sync'
@@ -5515,17 +5517,19 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid shrink-0 gap-2 sm:min-w-[150px] sm:gap-3">
-              <button
-                type="button"
-                onClick={() => setActiveTab('ee-p3')}
-                className="rounded-xl border border-white/10 bg-white/8 p-3 text-left backdrop-blur-sm transition hover:border-emerald-300/40 hover:bg-white/12 focus:outline-none focus:ring-2 focus:ring-emerald-300/60 sm:p-4"
-                title="Open E&E of P3 projects"
-              >
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Open page</p>
-                <p className="mt-1.5 text-lg font-bold leading-tight text-white sm:text-xl">E&E of P3 projs</p>
-              </button>
-            </div>
+            {adminAuthed ? (
+              <div className="grid shrink-0 gap-2 sm:min-w-[150px] sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ee-p3')}
+                  className="rounded-xl border border-white/10 bg-white/8 p-3 text-left backdrop-blur-sm transition hover:border-emerald-300/40 hover:bg-white/12 focus:outline-none focus:ring-2 focus:ring-emerald-300/60 sm:p-4"
+                  title="Open E&E of P3 projects"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Open page</p>
+                  <p className="mt-1.5 text-lg font-bold leading-tight text-white sm:text-xl">E&E of P3 projs</p>
+                </button>
+              </div>
+            ) : null}
           </div>
         </header>
 
