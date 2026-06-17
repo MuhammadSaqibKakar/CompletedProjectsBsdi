@@ -19,6 +19,11 @@ import {
   restoreMissingDatabaseMedia,
   restoreSingleDatabaseMedia,
 } from './media-library.js'
+import {
+  DEFAULT_GOOGLE_SHEET_ID,
+  DEFAULT_GOOGLE_SHEET_URL,
+  syncCompletedProjectsFromGoogleSheet,
+} from './google-sheet-sync.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -46,6 +51,26 @@ let templatePptBuilding = false
 let mediaRestoreJob = Promise.resolve()
 let queuedMediaRestoreData = null
 let mediaRestoreRunning = false
+let googleSheetSyncJob = null
+let googleSheetSyncStatus = {
+  enabled: !/^(0|false|off|no)$/i.test(process.env.BSDI_GOOGLE_SHEET_SYNC || ''),
+  running: false,
+  spreadsheetId: process.env.BSDI_GOOGLE_SHEET_ID || DEFAULT_GOOGLE_SHEET_ID,
+  url: process.env.BSDI_GOOGLE_SHEET_URL || DEFAULT_GOOGLE_SHEET_URL,
+  lastStartedAt: '',
+  lastFinishedAt: '',
+  lastError: '',
+  lastSummary: null,
+}
+let googleSheetLastSyncMs = 0
+const googleSheetSyncIntervalMs = Math.max(
+  0,
+  Number(process.env.BSDI_GOOGLE_SHEET_SYNC_INTERVAL_MS || 60 * 1000),
+)
+const googleSheetSyncTimeoutMs = Math.max(
+  10 * 1000,
+  Number(process.env.BSDI_GOOGLE_SHEET_TIMEOUT_MS || 120 * 1000),
+)
 
 // The active DB and uploaded media must live outside dist/public so redeploys
 // can replace code without wiping user-added data.
@@ -468,6 +493,96 @@ function queueDatabaseMediaRestore(data) {
   return mediaRestoreJob
 }
 
+function queueDerivedAssets(data) {
+  queueDefaultReportRebuild(data)
+  queueTemplatePptRebuild(data)
+  queueDatabaseMediaRestore(data)
+}
+
+async function runGoogleSheetSync({ force = false } = {}) {
+  if (!googleSheetSyncStatus.enabled) {
+    const state = await readDashboardState()
+    return { state, summary: { skipped: true, reason: 'disabled' } }
+  }
+
+  if (googleSheetSyncJob) return googleSheetSyncJob
+
+  const nowMs = Date.now()
+  if (!force && googleSheetLastSyncMs && nowMs - googleSheetLastSyncMs < googleSheetSyncIntervalMs) {
+    const state = await readDashboardState()
+    return { state, summary: { skipped: true, reason: 'fresh' } }
+  }
+
+  googleSheetSyncStatus = {
+    ...googleSheetSyncStatus,
+    running: true,
+    lastStartedAt: new Date().toISOString(),
+    lastError: '',
+  }
+
+  googleSheetSyncJob = (async () => {
+    try {
+      const current = await readDashboardState()
+      const result = await syncCompletedProjectsFromGoogleSheet(current, {
+        spreadsheetId: googleSheetSyncStatus.spreadsheetId,
+        url: googleSheetSyncStatus.url,
+        timeoutMs: googleSheetSyncTimeoutMs,
+      })
+
+      let state = current
+      if (result.summary.changed) {
+        assertDurableWriteStorage()
+        state = await dashboardStorage.writeState(result.data)
+        queueDerivedAssets(state)
+      }
+
+      googleSheetLastSyncMs = Date.now()
+      googleSheetSyncStatus = {
+        ...googleSheetSyncStatus,
+        running: false,
+        lastFinishedAt: new Date().toISOString(),
+        lastError: '',
+        lastSummary: {
+          ...result.summary,
+          extracted: {
+            workbookSheets: result.extracted.workbookSheets,
+            districtSheetCount: result.extracted.districtSheetCount,
+            allRows: result.extracted.allRows,
+            completedRows: result.extracted.completedRows,
+            missingSheets: result.extracted.missingSheets,
+          },
+        },
+      }
+
+      console.log(
+        `Google Sheet sync complete: ${result.summary.added} added, ${result.summary.updated} updated, ${result.summary.unchanged} unchanged`,
+      )
+      return { state, summary: result.summary }
+    } catch (error) {
+      googleSheetLastSyncMs = Date.now()
+      googleSheetSyncStatus = {
+        ...googleSheetSyncStatus,
+        running: false,
+        lastFinishedAt: new Date().toISOString(),
+        lastError: error.message,
+      }
+      console.warn(`Google Sheet sync failed: ${error.message}`)
+      const state = await readDashboardState()
+      return { state, summary: { error: error.message } }
+    } finally {
+      googleSheetSyncJob = null
+    }
+  })()
+
+  return googleSheetSyncJob
+}
+
+async function readDashboardStateWithSheetSync({ force = false } = {}) {
+  if (!googleSheetSyncStatus.enabled) return readDashboardState()
+  const result = await runGoogleSheetSync({ force })
+  return result.state
+}
+
 app.get('/api/health', async (_req, res, next) => {
   try {
     const state = await readDashboardState()
@@ -483,6 +598,7 @@ app.get('/api/health', async (_req, res, next) => {
         running: mediaRestoreRunning,
         queued: Boolean(queuedMediaRestoreData),
       },
+      googleSheet: googleSheetSyncStatus,
       revision: state._serverRevision || null,
     })
   } catch (error) {
@@ -492,9 +608,32 @@ app.get('/api/health', async (_req, res, next) => {
 
 app.get('/api/state', async (_req, res, next) => {
   try {
-    const state = await readDashboardState()
+    const state = await readDashboardStateWithSheetSync({
+      force: _req.query?.forceSheetSync === '1',
+    })
     res.set('Cache-Control', 'no-store')
     res.json(state)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/google-sheet/status', (_req, res) => {
+  res.set('Cache-Control', 'no-store')
+  res.json(googleSheetSyncStatus)
+})
+
+app.post('/api/google-sheet/sync', async (req, res, next) => {
+  try {
+    await assertAdminPassword(req)
+    const result = await runGoogleSheetSync({ force: true })
+    res.set('Cache-Control', 'no-store')
+    res.json({
+      ok: !result.summary?.error,
+      summary: result.summary,
+      status: googleSheetSyncStatus,
+      revision: result.state?._serverRevision || null,
+    })
   } catch (error) {
     next(error)
   }
@@ -702,10 +841,20 @@ app.listen(port, () => {
   console.log(`BSDI dashboard server running on port ${port}`)
   console.log(`Data directory: ${dataDir}`)
   readDashboardState()
-    .then((state) => {
-      queueDefaultReportRebuild(state)
-      queueTemplatePptRebuild(state)
-      queueDatabaseMediaRestore(state)
+    .then(async (state) => {
+      let startupState = state
+      if (googleSheetSyncStatus.enabled) {
+        const syncResult = await runGoogleSheetSync({ force: true })
+        startupState = syncResult.state || state
+      }
+      queueDerivedAssets(startupState)
+      if (googleSheetSyncStatus.enabled && googleSheetSyncIntervalMs > 0) {
+        setInterval(() => {
+          runGoogleSheetSync({ force: true }).catch((error) => {
+            console.warn(`Scheduled Google Sheet sync failed: ${error.message}`)
+          })
+        }, googleSheetSyncIntervalMs).unref?.()
+      }
     })
     .catch((error) => {
       console.warn(`Default report startup rebuild skipped: ${error.message}`)

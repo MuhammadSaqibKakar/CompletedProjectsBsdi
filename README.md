@@ -51,6 +51,7 @@ The bundled database is stored at `public/database/bsdi-db.json`.
 - Toast notifications for save, delete, upload, lock/unlock, sync, and error states.
 - Offline local cache for meeting mode.
 - Shared sync API for multi-laptop online edits.
+- Automatic Google Sheet sync from the configured BSDI progress workbook. The server scans the 36 district-name sheets and adds/updates rows whose progress is `100%` or higher.
 - Print button downloads the latest server-cached PDF report instead of opening the browser print preview.
 - Render/Hostinger-compatible Node deployment path.
 
@@ -119,6 +120,8 @@ The server exposes:
 
 - `GET /api/health` - server status
 - `GET /api/state` - current shared database
+- `GET /api/google-sheet/status` - automatic Google Sheet sync status
+- `POST /api/google-sheet/sync` - force a Google Sheet sync after admin password verification
 - `PUT /api/state` - save full database snapshot with revision conflict protection
 - `POST /api/media` - upload image/video files
 - `GET /api/report/pdf` - generated report PDF for the selected phase/district
@@ -158,6 +161,25 @@ Admin edits save locally first. If the shared Node API is available, the app pus
 The server uses a revision number to stop silent overwrites. If two admins edit at the same time, the second stale save is rejected with a sync conflict so the user can sync latest data and save again.
 
 For production, set `BSDI_REQUIRE_MYSQL=true`. With that guard enabled, online saves and media uploads are blocked unless MySQL is connected, so new website data cannot silently go into a temporary JSON file.
+
+The production server also syncs completed projects from the BSDI Google Sheet by default:
+
+```text
+https://docs.google.com/spreadsheets/d/1wFiY9w9OiWgKWosE9cZNoIwfKz92-_NxTga_RwQuG6c/edit?gid=1491221426#gid=1491221426
+```
+
+On startup, on a scheduled interval, and when `/api/state?forceSheetSync=1` is requested, the server exports the workbook, reads only the 36 district-name sheets, and merges rows where the progress value is `100%` or higher. Existing project media, uploaded files, beneficiary values, and manual records are preserved. New or updated rows are saved to the active MySQL state, so GitHub redeploys do not reset them.
+
+Optional sync variables:
+
+```text
+BSDI_GOOGLE_SHEET_SYNC=true
+BSDI_GOOGLE_SHEET_ID=1wFiY9w9OiWgKWosE9cZNoIwfKz92-_NxTga_RwQuG6c
+BSDI_GOOGLE_SHEET_SYNC_INTERVAL_MS=60000
+BSDI_GOOGLE_SHEET_TIMEOUT_MS=120000
+```
+
+Set `BSDI_GOOGLE_SHEET_SYNC=false` only if you need to pause automatic imports.
 
 After a successful online save, the server clears old generated PDFs and starts rebuilding the default `Total / All Districts` report in the background. The PDF button downloads that cached PDF with a Pakistan-time filename. The PPT button downloads only the exact canonical PowerPoint from `BSDI_DATA_DIR/templates/Completed_BSDI-14-03-2026.pptx`; if that file is missing, the server returns an error instead of generating a different deck. Project records remain in MySQL; uploaded media and report files remain in persistent `BSDI_DATA_DIR`.
 
@@ -323,6 +345,6 @@ Fix: run `git lfs pull` before upload/deploy, or configure the host build to fet
 
 ## Notes
 
-- The dashboard is for completed BSDI projects and treats records with progress >= 80% as completed based on the imported Google Sheet workflow.
+- The automatic Google Sheet workflow imports district-sheet rows whose progress is `100%` or higher.
 - Drive links are view-only for normal users.
 - Imported media uses stable project/media IDs so files stay attached to the correct project.

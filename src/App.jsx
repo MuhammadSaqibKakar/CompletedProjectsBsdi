@@ -1237,8 +1237,8 @@ async function checkSyncServerAvailable() {
   }
 }
 
-async function loadRemoteDashboardDataset() {
-  const remote = await fetchJsonFromApi(API_STATE_ENDPOINT)
+async function loadRemoteDashboardDataset(options = {}) {
+  const remote = await fetchJsonFromApi(options.forceSheetSync ? `${API_STATE_ENDPOINT}?forceSheetSync=1` : API_STATE_ENDPOINT)
   return normalizeDataset(remote)
 }
 
@@ -4990,7 +4990,7 @@ export default function App() {
         })
       }
 
-      const remoteDataset = await loadRemoteDashboardDataset()
+      const remoteDataset = await loadRemoteDashboardDataset({ forceSheetSync: true })
       const remoteProjects = remoteDataset.projects.map(cleanProject)
       const hydratedProjects = await hydrateProjectsWithLocalMedia(remoteProjects)
       setBaseData(remoteDataset)

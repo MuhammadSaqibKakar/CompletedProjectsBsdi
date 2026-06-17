@@ -92,6 +92,34 @@ After that, MySQL becomes the source of truth for online users. GitHub redeploys
 
 If the frontend is hosted separately from the Node API, build the frontend with `VITE_BSDI_API_BASE_URL` set to the Node API domain.
 
+## Google Sheet Auto Sync
+
+The server is configured to read the BSDI Google Sheet by default:
+
+```text
+https://docs.google.com/spreadsheets/d/1wFiY9w9OiWgKWosE9cZNoIwfKz92-_NxTga_RwQuG6c/edit?gid=1491221426#gid=1491221426
+```
+
+The sync reads only the 36 district-name sheets. Any row whose progress is `100%` or higher is merged into the active dashboard database. Existing media, uploaded files, beneficiary values, and manual records are preserved. The sync runs on server startup, every `BSDI_GOOGLE_SHEET_SYNC_INTERVAL_MS`, and on `/api/state?forceSheetSync=1`.
+
+Useful endpoints:
+
+```text
+GET  /api/google-sheet/status
+POST /api/google-sheet/sync
+```
+
+The force-sync endpoint requires the admin password. Use these environment variables only if you need to override the defaults:
+
+```text
+BSDI_GOOGLE_SHEET_SYNC=true
+BSDI_GOOGLE_SHEET_ID=1wFiY9w9OiWgKWosE9cZNoIwfKz92-_NxTga_RwQuG6c
+BSDI_GOOGLE_SHEET_SYNC_INTERVAL_MS=60000
+BSDI_GOOGLE_SHEET_TIMEOUT_MS=120000
+```
+
+Keep `BSDI_REQUIRE_MYSQL=true` in production so imported sheet records are saved to MySQL, not temporary JSON.
+
 When an online save succeeds, old generated PDF files are deleted and the default `Total / All Districts` report starts rebuilding in the background. The PDF button downloads that cached PDF directly with a Pakistan-time filename. The PPT button downloads only the exact canonical PowerPoint at `BSDI_DATA_DIR/templates/Completed_BSDI-14-03-2026.pptx`; if that file is missing, the server returns an error instead of generating a different deck. Project records remain in MySQL.
 
 ## Backup Routine
