@@ -10,11 +10,6 @@ const dataDir = path.resolve(process.env.BSDI_DATA_DIR || path.join(rootDir, 'se
 const storage = createCleanupStorage({ rootDir, dataDir })
 const release = 'content-reset-2026-09-06'
 
-// Finish the authorized legacy cleanup before accepting any requests.
-await storage.clearLegacyData()
-const initialCheck = await storage.verifyClean()
-if (!initialCheck.clean) throw new Error('Legacy content cleanup is incomplete.')
-
 const app = express()
 app.disable('x-powered-by')
 app.use(compression())
@@ -75,14 +70,27 @@ app.use((error, _req, res, next) => {
   res.status(503).json({ error: 'The website is temporarily unavailable.' })
 })
 
-const server = app.listen(Number(process.env.PORT || 4174), () => {
-  console.log(`Completed Projects maintenance ready: ${release}; storage=${storage.mode}`)
-})
-async function shutdown() {
-  server.close(async () => {
-    await storage.close()
-    process.exit(0)
+async function start() {
+  // Keep the entry module synchronous for hosts that load it with require().
+  // The listener still opens only after the authorized cleanup is verified.
+  await storage.clearLegacyData()
+  const initialCheck = await storage.verifyClean()
+  if (!initialCheck.clean) throw new Error('Legacy content cleanup is incomplete.')
+  const server = app.listen(Number(process.env.PORT || 4174), () => {
+    console.log(`Completed Projects maintenance ready: ${release}; storage=${storage.mode}`)
   })
+  function shutdown() {
+    server.close(async () => {
+      await storage.close()
+      process.exit(0)
+    })
+  }
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
 }
-process.once('SIGTERM', shutdown)
-process.once('SIGINT', shutdown)
+
+start().catch(async (error) => {
+  console.error('Maintenance startup failed:', error.message)
+  await storage.close().catch(() => {})
+  process.exitCode = 1
+})

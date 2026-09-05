@@ -21,7 +21,11 @@ async function reservePort() {
   return port
 }
 
-test('maintenance startup deletes content and prevents legacy clients from restoring it', { timeout: 35_000 }, async (t) => {
+for (const [startupMode, startupArgs] of [
+  ['direct', ['server/index.js']],
+  ['host require', ['-e', "require('./server/index.js')"]],
+]) {
+test(`maintenance ${startupMode} startup deletes content and prevents legacy clients from restoring it`, { timeout: 35_000 }, async (t) => {
   // Copy the application so the real checkout and its data are never cleanup targets.
   const temporaryRoot = await fs.realpath(os.tmpdir())
   const fixtureRoot = await fs.mkdtemp(path.join(temporaryRoot, 'completed-projects-integration-'))
@@ -73,7 +77,7 @@ test('maintenance startup deletes content and prevents legacy clients from resto
   )))
   const port = await reservePort()
   const baseUrl = `http://127.0.0.1:${port}`
-  child = spawn(process.execPath, ['server/index.js'], {
+  child = spawn(process.execPath, startupArgs, {
     cwd: fixtureRoot,
     env: { ...env, NODE_ENV: 'test', BSDI_DATA_DIR: dataDir, PORT: String(port) },
     windowsHide: true,
@@ -175,3 +179,4 @@ test('maintenance startup deletes content and prevents legacy clients from resto
   assert.equal(finalHealth.clean, true)
   assert.equal(finalHealth.persistentFileCount, 0)
 })
+}
