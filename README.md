@@ -89,7 +89,10 @@ Database-backed login limits apply across workers, alongside request limits.
 
 Uploads are authenticated before multipart parsing, checked for actual PPTX
 structure, constrained for ZIP expansion and stored with generated filenames.
-The viewer runs with an opaque origin under a server-enforced sandbox.
+The viewer runs in an opaque-origin sandboxed frame, even when its URL is
+opened directly. The server emits an isolated `srcdoc` wrapper rather than
+exposing the renderer as a standalone document. A document-level content policy
+also protects HTML when Hostinger replaces the CSP response header.
 Security headers limit script sources, framing, external connections and
 browser permissions. Presentation content cannot access the admin page.
 Public file resources allow anonymous CORS only so the sandbox can read them;

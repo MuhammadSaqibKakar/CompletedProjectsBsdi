@@ -12,8 +12,9 @@ import { districts, districtById } from './districts.js'
 import { hashToken, readCookie, randomToken, safeEqual, sessionLifetime, verifyPassword, validatePasswordHash } from './auth.js'
 import { defaultPasswordHash } from './admin-credential.js'
 import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
+import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-06'
+export const release = 'district-portal-2026-09-06.2'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const notFound = (res) => res.status(404).json({ error: 'Presentation not found.' })
 const publicPresentation = (item) => ({
@@ -222,16 +223,19 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
   app.use(['/database', '/synced-media', '/media', '/brand', '/data'], (_req, res) => res.status(410).end())
   app.use('/assets', publicViewerResource)
   app.get('/viewer.html', (_req, res) => res.status(404).end())
+  app.get('/index.html', (_req, res) => res.redirect('/'))
   app.use(express.static(distDir, { index: false, dotfiles: 'deny', cacheControl: false, etag: false, lastModified: false }))
   app.get('/presentations/:id/view', async (req, res) => {
     if (!UUID.test(req.params.id) || !(await storage.getPresentation(req.params.id))) return notFound(res)
     res.set('Content-Security-Policy', `${res.get('Content-Security-Policy')}; sandbox allow-scripts allow-downloads`)
-    res.sendFile(path.join(distDir, 'viewer.html'))
+    const viewerHtml = await fs.readFile(path.join(distDir, 'viewer.html'), 'utf8')
+    res.type('html').send(isolatedViewerShell(req.params.id, viewerHtml))
   })
-  app.get(['/', '/admin', '/dashboard', '/dashboard/', '/district/:id'], (req, res) => {
+  app.get(['/', '/admin', '/dashboard', '/dashboard/', '/district/:id'], async (req, res) => {
     if (req.params.id && !districtById.has(req.params.id)) return res.status(404).send('District not found.')
     if (req.path.startsWith('/admin')) res.set('X-Robots-Tag', 'noindex, nofollow')
-    res.sendFile(path.join(distDir, 'index.html'))
+    const html = await fs.readFile(path.join(distDir, 'index.html'), 'utf8')
+    res.type('html').send(withDocumentPolicy(html))
   })
   app.use((_req, res) => res.status(404).json({ error: 'Not found.' }))
   app.use((error, _req, res, next) => {

@@ -52,6 +52,9 @@ test('public district catalog uses exactly the supplied names and starts empty',
   assert.equal((await request('/api/state')).status, 404)
   assert.equal((await request('/server/admin-credential.js')).status, 404)
   assert.equal((await request('/viewer.html')).status, 404)
+  const page = await request('/').then((response) => response.text())
+  assert.match(page, /http-equiv="Content-Security-Policy"/)
+  assert.match(page, /script-src 'self'/)
 })
 
 test('authenticated upload, isolated preview, exact download, persistence and deletion', async (t) => {
@@ -87,6 +90,12 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   assert.equal(preview.status, 200)
   assert.match(preview.headers.get('content-security-policy'), /sandbox allow-scripts allow-downloads/)
   assert.doesNotMatch(preview.headers.get('content-security-policy'), /allow-same-origin/)
+  const previewHtml = await preview.text()
+  assert.match(previewHtml, /<iframe[^>]+sandbox="allow-scripts allow-downloads"/)
+  assert.match(previewHtml, /srcdoc="/)
+  assert.match(previewHtml, /http-equiv="Content-Security-Policy"/)
+  assert.doesNotMatch(previewHtml, /allow-same-origin/)
+  assert.match(previewHtml, /name=&quot;presentation-id&quot;/)
   const download = await request(item.downloadUrl)
   assert.equal(download.status, 200)
   assert.match(download.headers.get('content-disposition'), /attachment/)

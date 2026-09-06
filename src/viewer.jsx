@@ -4,7 +4,8 @@ import { AlertCircle, ArrowLeft, ArrowRight, Download, FileSliders, LoaderCircle
 import { PptxViewer, RECOMMENDED_ZIP_LIMITS } from '@aiden0z/pptx-renderer'
 import './viewer.css'
 
-const PRESENTATION_ID = window.location.pathname.match(/^\/presentations\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/view\/?$/i)?.[1]
+const metaId = document.querySelector('meta[name="presentation-id"]')?.content || ''
+const PRESENTATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaId) && window.self !== window.top ? metaId : null
 const MAX_FILE_BYTES = 200 * 1024 * 1024
 const ZIP_LIMITS = {
   ...RECOMMENDED_ZIP_LIMITS,
