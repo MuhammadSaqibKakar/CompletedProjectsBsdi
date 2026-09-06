@@ -8,6 +8,7 @@ import mysql from 'mysql2/promise'
 const enabled = (value) => /^(1|true|required)$/i.test(value || '')
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const PRESENTATION_COLUMNS = 'id, district_id AS districtId, title, original_name AS originalName, stored_name AS storedName, size, slide_count AS slideCount, uploaded_at AS uploadedAt'
+const districtOccupied = () => Object.assign(new Error('This district already has a presentation. Delete it before uploading another.'), { status: 409 })
 
 function mysqlConfigFromEnv(env) {
   const urlValue = env.DATABASE_URL || env.MYSQL_URL || ''
@@ -134,9 +135,11 @@ export function createPortalStorage({ dataDir, env = process.env, createPool = (
   async function databaseQuery(sql, values = [], executor = pool) {
     try {
       return await executor.execute(sql, values)
-    } catch {
+    } catch (error) {
       // MySQL driver messages may include private connection details or data.
-      throw new Error('Portal database operation failed.')
+      throw Object.assign(new Error('Portal database operation failed.'), {
+        code: ['ER_DUP_ENTRY', 'ER_DUP_KEYNAME'].includes(error.code) ? error.code : undefined,
+      })
     }
   }
 
@@ -211,8 +214,19 @@ export function createPortalStorage({ dataDir, env = process.env, createPool = (
           size BIGINT UNSIGNED NOT NULL,
           slide_count INT UNSIGNED NOT NULL,
           uploaded_at VARCHAR(24) CHARACTER SET ascii NOT NULL,
+          UNIQUE INDEX district_single (district_id),
           INDEX district_uploaded (district_id, uploaded_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`)
+        // Apply the same constraint to existing installations without replacing rows.
+        const [districtIndexes] = await databaseQuery("SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'completed_presentations' AND INDEX_NAME = 'district_single' AND NON_UNIQUE = 0")
+        if (!districtIndexes.length) {
+          try {
+            await databaseQuery('ALTER TABLE completed_presentations ADD UNIQUE INDEX district_single (district_id)')
+          } catch (error) {
+            // Another worker may have finished this migration concurrently.
+            if (error.code !== 'ER_DUP_KEYNAME') throw error
+          }
+        }
         await databaseQuery(`CREATE TABLE IF NOT EXISTS completed_admin_sessions (
           token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
           csrf_token VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -297,14 +311,20 @@ export function createPortalStorage({ dataDir, env = process.env, createPool = (
     requireInitialized()
     const record = presentationRecord(metadata)
     if (mode === 'mysql') {
-      await databaseQuery('INSERT INTO completed_presentations (id, district_id, title, original_name, stored_name, size, slide_count, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [record.id, record.districtId, record.title, record.originalName, record.storedName, record.size, record.slideCount, record.uploadedAt])
+      try {
+        await databaseQuery('INSERT INTO completed_presentations (id, district_id, title, original_name, stored_name, size, slide_count, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [record.id, record.districtId, record.title, record.originalName, record.storedName, record.size, record.slideCount, record.uploadedAt])
+      } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') throw districtOccupied()
+        throw error
+      }
       return record
     }
     return mutateLocal((next) => {
       if (next.presentations.some((entry) => entry.id === record.id || entry.storedName === record.storedName)) {
         throw new Error('Presentation already exists.')
       }
+      if (next.presentations.some((entry) => entry.districtId === record.districtId)) throw districtOccupied()
       next.presentations.push(record)
       return record
     })

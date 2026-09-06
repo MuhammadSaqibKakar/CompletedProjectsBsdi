@@ -199,7 +199,7 @@ export default function App() {
     };
   }, [menuOpen]);
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${districtId ? "district-view-shell" : ""}`}>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
@@ -246,7 +246,6 @@ export default function App() {
           >
             <MapPin size={19} />
             <span>District directory</span>
-            <span className="nav-count">39</span>
           </Link>
           {admin && (
             <Link to="/admin" className="nav-item active">
@@ -269,35 +268,15 @@ export default function App() {
         </div>
       </aside>
       <div className="main-shell" inert={menuOpen || undefined}>
-        <header className="topbar">
-          <div className="breadcrumbs">
-            <button
-              className="icon-button mobile-menu"
-              onClick={() => setMenuOpen(true)}
-              aria-label="Open navigation"
-              aria-controls="site-navigation"
-              aria-expanded={menuOpen}
-            >
-              <Menu size={21} />
-            </button>
-            <span className="breadcrumb-home">BSDI</span>
-            <ChevronRight size={14} />
-            <strong>
-              {admin
-                ? "Administration"
-                : districtId
-                  ? selectedDistrict?.name || "District"
-                  : "Dashboard"}
-            </strong>
-          </div>
-          <div className="topbar-right">
-            <span className="today">{date(today)}</span>
-            <span className="topbar-divider" />
-            <span className="profile-mark" aria-label="BSDI">
-              <ShieldCheck size={20} />
-            </span>
-          </div>
-        </header>
+        <button
+          className="icon-button mobile-menu floating-menu"
+          onClick={() => setMenuOpen(true)}
+          aria-label="Open navigation"
+          aria-controls="site-navigation"
+          aria-expanded={menuOpen}
+        >
+          <Menu size={21} />
+        </button>
         <main className="page-content" id="main-content">
           {admin ? (
             <AdminPage
@@ -312,10 +291,12 @@ export default function App() {
               retry={() => setRevision((value) => value + 1)}
             />
           )}
-          <footer className="page-footer">
-            <span>© {new Date(today).getFullYear()} BSDI</span>
-            <span>Completed work. Lasting impact.</span>
-          </footer>
+          {!districtId && (
+            <footer className="page-footer">
+              <span>© {new Date(today).getFullYear()} BSDI</span>
+              <span>Completed work. Lasting impact.</span>
+            </footer>
+          )}
         </main>
       </div>
     </div>
@@ -332,9 +313,6 @@ function Dashboard({ catalog, retry }) {
       district.name.toLowerCase().includes(search.trim().toLowerCase()) &&
       (filter !== "published" || district.presentationCount > 0),
   );
-  const published = districts.filter(
-    (district) => district.presentationCount > 0,
-  ).length;
   const visibleKey = visible.map((district) => district.id).join(",");
   useEffect(() => {
     const grid = gridRef.current;
@@ -395,45 +373,10 @@ function Dashboard({ catalog, retry }) {
           </span>
         </div>
       </section>
-      <section className="summary-row enter" aria-label="Portal overview">
-        <div className="summary-item">
-          <span className="summary-icon sage">
-            <MapPin size={21} />
-          </span>
-          <div>
-            <strong>39</strong>
-            <span>Districts</span>
-          </div>
-        </div>
-        <div className="summary-item">
-          <span className="summary-icon peach">
-            <FileSliders size={21} />
-          </span>
-          <div>
-            <strong>
-              {catalog.loading
-                ? "—"
-                : (catalog.data?.totalPresentations ?? "—")}
-            </strong>
-            <span>Presentations</span>
-          </div>
-        </div>
-        <div className="summary-item">
-          <span className="summary-icon sand">
-            <CircleCheck size={21} />
-          </span>
-          <div>
-            <strong>{catalog.loading ? "—" : published}</strong>
-            <span>Districts published</span>
-          </div>
-        </div>
-      </section>
       <section className="directory-section" id="districts">
         <div className="section-heading">
           <div>
-            <h2>
-              Explore districts <span className="count-pill">39</span>
-            </h2>
+            <h2>Explore districts</h2>
           </div>
           <div className="directory-tools">
             <label className="search-field">
@@ -481,9 +424,7 @@ function Dashboard({ catalog, retry }) {
                 style={{ "--order": index % 3 }}
               >
                 <div className="district-card-top">
-                  <span
-                    className={`district-icon ${district.presentationCount ? "has-content" : ""}`}
-                  >
+                  <span className="district-icon">
                     <MapPin size={28} strokeWidth={1.7} />
                   </span>
                   <span className="district-arrow">
@@ -491,21 +432,6 @@ function Dashboard({ catalog, retry }) {
                   </span>
                 </div>
                 <h3>{district.name}</h3>
-                <div className="district-card-bottom">
-                  {district.presentationCount ? (
-                    <span className="published-label">
-                      <span />
-                      {district.presentationCount} presentation
-                      {district.presentationCount === 1 ? "" : "s"}
-                    </span>
-                  ) : (
-                    <span className="pending-label">
-                      <span />
-                      Coming soon
-                    </span>
-                  )}
-                  <FileSliders size={15} />
-                </div>
               </Link>
             ))}
           </div>
@@ -525,11 +451,6 @@ function Dashboard({ catalog, retry }) {
             </button>
           </div>
         )}
-        {!catalog.loading && !catalog.error && (
-          <p className="results-caption">
-            Showing {visible.length} of 39 districts
-          </p>
-        )}
       </section>
     </>
   );
@@ -538,15 +459,20 @@ function Dashboard({ catalog, retry }) {
 function DistrictPage({ id }) {
   const [revision, setRevision] = useState(0);
   const detail = useLoad(`/api/districts/${id}`, revision);
-  const [chosenId, setChosenId] = useState("");
-  const selected =
-    detail.data?.presentations.find((item) => item.id === chosenId) ||
-    detail.data?.presentations[0];
+  const selected = detail.data?.presentations[0];
+  const districtName = detail.data?.district.name;
   return (
-    <>
-      <Link to="/" className="back-link">
-        <ArrowLeft size={17} /> Back to districts
-      </Link>
+    <section className="district-view">
+      <div className="district-view-heading">
+        <Link
+          to="/#districts"
+          className="icon-button district-back"
+          aria-label="Back to districts"
+        >
+          <ArrowLeft size={22} />
+        </Link>
+        <h1>{districtName || "District"}</h1>
+      </div>
       {detail.loading ? (
         <Loading />
       ) : detail.error ? (
@@ -554,103 +480,27 @@ function DistrictPage({ id }) {
           message={detail.error}
           retry={() => setRevision((value) => value + 1)}
         />
+      ) : selected ? (
+        <iframe
+          key={selected.id}
+          className="slide-frame district-full-viewer"
+          src={selected.viewUrl}
+          title={`${districtName} presentation viewer`}
+          sandbox="allow-scripts allow-downloads"
+          allowFullScreen
+        />
       ) : (
-        <>
-          <div className="district-page-heading enter">
-            <div>
-              <span className="eyebrow muted">
-                <MapPin size={14} /> BALOCHISTAN · DISTRICT
-              </span>
-              <h1>{detail.data.district.name}</h1>
-              <p>Completed project presentations.</p>
-            </div>
-            <span className="district-heading-badge">
-              <FileSliders size={17} />
-              {detail.data.presentations.length} presentation
-              {detail.data.presentations.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          {selected ? (
-            <div className="presentation-layout enter">
-              <aside className="presentation-list">
-                <div className="list-title">
-                  District presentations
-                  <span>{detail.data.presentations.length}</span>
-                </div>
-                {detail.data.presentations.map((item) => (
-                  <button
-                    className={`presentation-choice ${selected.id === item.id ? "selected" : ""}`}
-                    key={item.id}
-                    onClick={() => setChosenId(item.id)}
-                  >
-                    <FileSliders size={21} />
-                    <span>
-                      <strong>{item.title}</strong>
-                      <small>
-                        {date(item.uploadedAt)} · {size(item.size)}
-                      </small>
-                    </span>
-                    <ChevronRight size={15} />
-                  </button>
-                ))}
-              </aside>
-              <section className="presentation-panel">
-                <div className="presentation-panel-header">
-                  <div>
-                    <span className="eyebrow muted">COMPLETED PROJECTS</span>
-                    <h2>{selected.title}</h2>
-                    <p>
-                      {selected.slideCount} slides · {size(selected.size)} ·
-                      Added {date(selected.uploadedAt)}
-                    </p>
-                  </div>
-                  <a
-                    className="button primary"
-                    href={selected.downloadUrl}
-                    download
-                  >
-                    <ArrowDownToLine size={17} />
-                    Download PPTX
-                  </a>
-                </div>
-                <iframe
-                  key={selected.id}
-                  className="slide-frame"
-                  src={selected.viewUrl}
-                  title={`${selected.title} presentation viewer`}
-                  sandbox="allow-scripts allow-downloads"
-                  allowFullScreen
-                />
-                <div className="presentation-footnote">
-                  <ShieldCheck size={15} />
-                  View the slides here, or download the original PowerPoint.
-                </div>
-              </section>
-            </div>
-          ) : (
-            <div className="empty-state district-empty enter">
-              <span className="empty-illustration">
-                <FolderOpen size={42} strokeWidth={1.5} />
-                <span>
-                  <FileSliders size={18} />
-                </span>
-              </span>
-              <h2>Presentations coming soon</h2>
-              <p>
-                No presentations have been published for{" "}
-                {detail.data.district.name} yet.
-              </p>
-              <Link to="/" className="button secondary">
-                Explore other districts <ArrowRight size={16} />
-              </Link>
-            </div>
-          )}
-        </>
+        <div className="empty-state district-empty enter">
+          <FolderOpen size={42} strokeWidth={1.5} />
+          <h2>No presentation yet</h2>
+          <Link to="/#districts" className="button secondary">
+            Explore districts <ArrowRight size={18} />
+          </Link>
+        </div>
       )}
-    </>
+    </section>
   );
 }
-
 function AdminPage({ catalog, onChange }) {
   const [session, setSession] = useState(null);
   const [error, setError] = useState("");
@@ -792,6 +642,9 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
     districtId ? `/api/districts/${districtId}` : null,
     revision,
   );
+  const hasPresentation = Boolean(detail.data?.presentations.length);
+  const uploadUnavailable =
+    hasPresentation || detail.loading || Boolean(detail.error);
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -814,6 +667,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
     else setError(error.message);
   }
   function chooseFile(files) {
+    if (uploadUnavailable) return;
     setError("");
     setMessage("");
     if (!files?.length) return;
@@ -839,7 +693,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
   }
   async function upload(event) {
     event.preventDefault();
-    if (!file || !districtId || busy) return;
+    if (!file || !districtId || busy || uploadUnavailable) return;
     setBusy(true);
     setProgress(0);
     setError("");
@@ -926,7 +780,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
             <ShieldCheck size={15} /> ADMINISTRATION
           </span>
           <h1>Presentation manager</h1>
-          <p>Manage completed project presentations.</p>
+          <p>One presentation per district.</p>
         </div>
         <button
           className="button secondary"
@@ -944,7 +798,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
           </span>
           <div>
             <strong>Choose a district</strong>
-            <p>Uploads will appear on this district’s public page.</p>
+            <p>Select the district to manage.</p>
           </div>
         </div>
         <label className="select-field district-select">
@@ -954,6 +808,9 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
             disabled={busy || deleting || catalog.loading}
             onChange={(event) => {
               setChosenDistrict(event.target.value);
+              setFile(null);
+              setTitle("");
+              if (fileRef.current) fileRef.current.value = "";
               setMessage("");
               setError("");
             }}
@@ -1001,112 +858,121 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
               <FileUp size={20} />
             </span>
             <div>
-              <h2>Add a presentation</h2>
+              <h2>Upload presentation</h2>
               <p>Upload to the selected district.</p>
             </div>
           </div>
-          <form onSubmit={upload}>
-            <label
-              className={`upload-dropzone ${dragging ? "dragging" : ""} ${busy ? "disabled" : ""}`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                if (!busy) setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                if (!busy) chooseFile(event.dataTransfer.files);
-              }}
-            >
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                aria-label="Choose a PowerPoint presentation"
-                disabled={busy}
-                onChange={(event) => chooseFile(event.target.files)}
-              />
-              <span className="upload-cloud">
-                <FileUp size={29} strokeWidth={1.5} />
-              </span>
-              <strong>
-                {file
-                  ? "Choose a different presentation"
-                  : "Drop your presentation here"}
-              </strong>
-              <span>
-                or <b>browse files</b>
-              </span>
-              <small>PowerPoint (.pptx) · Up to 200 MB · 500 slides</small>
-            </label>
-            {file && (
-              <div className="selected-file">
-                <FileSliders size={25} />
-                <div>
-                  <strong>{file.name}</strong>
-                  <small>{size(file.size)}</small>
+          {hasPresentation ? (
+            <div className="upload-occupied">
+              <CircleCheck size={32} />
+              <h3>Presentation published</h3>
+              <p>Delete the current presentation before uploading a new one.</p>
+            </div>
+          ) : (
+            <form onSubmit={upload}>
+              <label
+                className={`upload-dropzone ${dragging ? "dragging" : ""} ${busy || uploadUnavailable ? "disabled" : ""}`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  if (!busy && !uploadUnavailable) setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragging(false);
+                  if (!busy && !uploadUnavailable)
+                    chooseFile(event.dataTransfer.files);
+                }}
+              >
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                  aria-label="Choose a PowerPoint presentation"
+                  disabled={busy || uploadUnavailable}
+                  onChange={(event) => chooseFile(event.target.files)}
+                />
+                <span className="upload-cloud">
+                  <FileUp size={29} strokeWidth={1.5} />
+                </span>
+                <strong>
+                  {file
+                    ? "Choose a different presentation"
+                    : "Drop your presentation here"}
+                </strong>
+                <span>
+                  or <b>browse files</b>
+                </span>
+                <small>PowerPoint (.pptx) · Up to 200 MB · 500 slides</small>
+              </label>
+              {file && (
+                <div className="selected-file">
+                  <FileSliders size={25} />
+                  <div>
+                    <strong>{file.name}</strong>
+                    <small>{size(file.size)}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Remove selected file"
+                    disabled={busy}
+                    onClick={() => {
+                      setFile(null);
+                      if (fileRef.current) fileRef.current.value = "";
+                    }}
+                  >
+                    <X size={17} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Remove selected file"
-                  disabled={busy}
-                  onClick={() => {
-                    setFile(null);
-                    if (fileRef.current) fileRef.current.value = "";
-                  }}
-                >
-                  <X size={17} />
-                </button>
-              </div>
-            )}
-            <label className="field-label" htmlFor="presentation-title">
-              Presentation title <span>Optional</span>
-            </label>
-            <input
-              className="text-input"
-              id="presentation-title"
-              value={title}
-              maxLength={160}
-              disabled={busy}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Use the file name, or add a title"
-            />
-            {busy && (
-              <div className="upload-progress" role="status">
-                <div>
-                  <span>
-                    {progress === 100
-                      ? "Checking and publishing…"
-                      : "Uploading presentation…"}
-                  </span>
-                  <strong>{progress}%</strong>
-                </div>
-                <progress max="100" value={progress} />
-              </div>
-            )}
-            <button
-              className="button primary full-width"
-              disabled={!file || busy || !districtId}
-            >
-              {busy ? (
-                <>
-                  <LoaderCircle size={18} className="spin" />
-                  Publishing…
-                </>
-              ) : (
-                <>
-                  <FileUp size={18} />
-                  Publish presentation
-                </>
               )}
-            </button>
-            <p className="upload-help">
-              Use a self-contained .pptx with embedded images. Save older .ppt
-              files as .pptx before uploading.
-            </p>
-          </form>
+              <label className="field-label" htmlFor="presentation-title">
+                Presentation title <span>Optional</span>
+              </label>
+              <input
+                className="text-input"
+                id="presentation-title"
+                value={title}
+                maxLength={160}
+                disabled={busy}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Use the file name, or add a title"
+              />
+              {busy && (
+                <div className="upload-progress" role="status">
+                  <div>
+                    <span>
+                      {progress === 100
+                        ? "Checking and publishing…"
+                        : "Uploading presentation…"}
+                    </span>
+                    <strong>{progress}%</strong>
+                  </div>
+                  <progress max="100" value={progress} />
+                </div>
+              )}
+              <button
+                className="button primary full-width"
+                disabled={!file || busy || !districtId || uploadUnavailable}
+              >
+                {busy ? (
+                  <>
+                    <LoaderCircle size={18} className="spin" />
+                    Publishing…
+                  </>
+                ) : (
+                  <>
+                    <FileUp size={18} />
+                    Publish presentation
+                  </>
+                )}
+              </button>
+              <p className="upload-help">
+                Use a self-contained .pptx with embedded images. Save older .ppt
+                files as .pptx before uploading.
+              </p>
+            </form>
+          )}
         </section>
         <section className="admin-panel managed-panel">
           <div className="panel-heading">
@@ -1114,11 +980,8 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
               <FolderOpen size={20} />
             </span>
             <div>
-              <h2>{detail.data?.district.name || "District"} presentations</h2>
-              <p>
-                {detail.data?.presentations.length ?? 0} published to this
-                district
-              </p>
+              <h2>{detail.data?.district.name || "District"}</h2>
+              <p>District presentation</p>
             </div>
             {districtId && (
               <Link

@@ -65,6 +65,10 @@ MySQL tables `completed_presentations`, `completed_admin_sessions`, and
 Startup preserves uploaded content. The former destructive maintenance startup
 has been removed.
 
+Each district has one presentation. A database unique index enforces this across
+workers; the administrator deletes the current presentation before uploading its
+replacement. The district page opens that presentation in a viewport-sized viewer.
+
 Development without MySQL stores metadata in
 `server-data/portal/metadata.json`. This JSON adapter is for a single local
 process; production uses MySQL across workers.

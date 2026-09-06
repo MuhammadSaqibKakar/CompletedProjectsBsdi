@@ -14,7 +14,7 @@ import { defaultPasswordHash } from './admin-credential.js'
 import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
 import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-06.2'
+export const release = 'district-portal-2026-09-06.3'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const notFound = (res) => res.status(404).json({ error: 'Presentation not found.' })
 const publicPresentation = (item) => ({
@@ -152,6 +152,12 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
   // Authentication and CSRF checks run before multipart data reaches disk.
   app.post('/api/admin/districts/:id/presentations', requireOrigin, requireAdmin, requireCsrf,
     (req, res, next) => districtById.has(req.params.id) ? next() : res.status(404).json({ error: 'District not found.' }),
+    async (req, res, next) => {
+      if ((await storage.listPresentations(req.params.id)).length) {
+        return res.status(409).json({ error: 'This district already has a presentation. Delete it before uploading another.' })
+      }
+      next()
+    },
     upload.single('file'), async (req, res) => {
       if (!req.file) return res.status(400).json({ error: 'Choose a PowerPoint .pptx file.' })
       let finalPath
@@ -245,7 +251,7 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
     }
     if (error.type === 'entity.too.large') return res.status(413).json({ error: 'The request is too large.' })
     if (error instanceof SyntaxError && error.status === 400) return res.status(400).json({ error: 'Invalid request.' })
-    if (error.status === 400) return res.status(400).json({ error: error.message })
+    if (error.status === 400 || error.status === 409) return res.status(error.status).json({ error: error.message })
     console.error('Portal request failed:', error.code || error.name)
     res.status(503).json({ error: 'The request could not be completed. Please try again.' })
   })

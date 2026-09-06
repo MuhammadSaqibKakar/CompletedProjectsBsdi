@@ -38,10 +38,16 @@ function fakeMysql() {
   const calls = []
   const lifecycle = { began: 0, committed: 0, rolledBack: 0, released: 0, closed: 0 }
   let config
+  let districtIndex = false
   async function execute(sql, values = []) {
     calls.push({ sql, values: [...values] })
     assert.equal((sql.match(/\?/g) || []).length, values.length)
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS ')) return [{}]
+    if (sql.startsWith('SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS')) return [districtIndex ? [{ INDEX_NAME: 'district_single' }] : []]
+    if (sql === 'ALTER TABLE completed_presentations ADD UNIQUE INDEX district_single (district_id)') {
+      districtIndex = true
+      return [{}]
+    }
     if (sql === 'DELETE FROM completed_admin_sessions WHERE expires_at <= ?') {
       for (const [key, record] of sessions) if (record.expiresAt <= values[0]) sessions.delete(key)
       return [{}]
@@ -52,7 +58,9 @@ function fakeMysql() {
     }
     if (sql.startsWith('INSERT INTO completed_presentations ')) {
       const [id, districtId, title, originalName, storedName, size, slideCount, uploadedAt] = values
-      if (presentations.has(id)) throw new Error('duplicate database private content')
+      if (presentations.has(id) || (districtIndex && [...presentations.values()].some((entry) => entry.districtId === districtId))) {
+        throw Object.assign(new Error('duplicate database private content'), { code: 'ER_DUP_ENTRY' })
+      }
       presentations.set(id, { id, districtId, title, originalName, storedName, size, slideCount, uploadedAt })
       return [{ affectedRows: 1 }]
     }
@@ -149,7 +157,7 @@ test('JSON serializes concurrent mutations and recovers after a rejected mutatio
   const context = await fixture(t)
   const storage = createPortalStorage(context)
   await storage.initialize()
-  const records = Array.from({ length: 24 }, () => presentation())
+  const records = Array.from({ length: 24 }, (_, index) => presentation({ districtId: `district-${index}` }))
   await Promise.all(records.map((record) => storage.addPresentation(record)))
   await assert.rejects(storage.addPresentation(records[0]), /already exists/)
   const extra = presentation()
@@ -161,6 +169,34 @@ test('JSON serializes concurrent mutations and recovers after a rejected mutatio
   const reopened = createPortalStorage(context)
   await reopened.initialize()
   assert.deepEqual(await reopened.listPresentations(), result)
+})
+
+test('one presentation per district rejects concurrent additions and permits a new upload after deletion', async (t) => {
+  for (const mode of ['json', 'mysql']) {
+    const context = await fixture(t)
+    const fake = fakeMysql()
+    const options = mode === 'mysql' ? { env: fake.env, createPool: fake.createPool } : {}
+    const storage = createPortalStorage({ ...context, ...options })
+    await storage.initialize()
+    const records = [presentation(), presentation()]
+    const results = await Promise.allSettled(records.map((record) => storage.addPresentation(record)))
+    assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1, mode)
+    const rejected = results.find((result) => result.status === 'rejected')
+    assert.equal(rejected.reason.status, 409)
+    assert.match(rejected.reason.message, /already has a presentation/)
+    assert.doesNotMatch(rejected.reason.message, /private content/)
+    const [saved] = await storage.listPresentations('barkhan')
+    assert.ok(saved)
+    await storage.deletePresentation(saved.id)
+    const replacement = presentation()
+    assert.deepEqual(await storage.addPresentation(replacement), replacement)
+    const reopened = createPortalStorage({ ...context, ...options })
+    await reopened.initialize()
+    assert.deepEqual(await reopened.listPresentations('barkhan'), [replacement])
+    await assert.rejects(reopened.addPresentation(presentation()), (error) => error.status === 409)
+    await storage.close()
+    await reopened.close()
+  }
 })
 
 test('JSON sessions persist, expire and log out without storing a plaintext session token', async (t) => {
