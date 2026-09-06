@@ -394,3 +394,99 @@ a svg {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Match the portal's institutional teal, ivory and gold palette. */
+:root {
+  color: #153b38;
+  background: #eef2ed;
+}
+.presentation-viewer {
+  background: #eef2ed;
+}
+.viewer-toolbar {
+  background: linear-gradient(180deg, #fffdf8 0%, #f7f7f1 100%);
+  border-bottom-color: #d8ded5;
+  box-shadow: 0 4px 15px #123b320d;
+}
+.viewer-icon-button {
+  color: #28564f;
+  background: linear-gradient(145deg, #fdfcf7, #e8efea);
+  border-color: #ffffff;
+  box-shadow:
+    0 6px 13px #153d3412,
+    inset 1px 1px 2px #fff,
+    inset -2px -2px 4px #153d340a;
+}
+.viewer-icon-button:hover:not(:disabled),
+.viewer-icon-button:focus-visible:not(:disabled) {
+  color: #0b5147;
+  background: linear-gradient(145deg, #f7e8ba, #dfc578);
+  box-shadow:
+    0 9px 17px #153d341d,
+    inset 1px 1px 2px #fff7da;
+}
+.viewer-page-count {
+  color: #355d56;
+}
+.viewer-control-divider {
+  background: #d9ded5;
+}
+.viewer-download {
+  color: #fff;
+  border-color: #2f7869;
+  background: linear-gradient(145deg, #0f6959, #084940);
+  box-shadow:
+    0 8px 17px #123d3430,
+    inset 1px 1px 2px #ffffff30,
+    inset -2px -2px 4px #041f1c29;
+}
+.viewer-download:hover,
+.viewer-download:focus-visible {
+  background: linear-gradient(145deg, #147765, #0a5449);
+  border-color: #4d8e80;
+  box-shadow:
+    0 11px 21px #123d3438,
+    inset 1px 1px 2px #ffffff2e;
+}
+.viewer-main {
+  background:
+    radial-gradient(circle at 82% 10%, #cbdcd44f 0, transparent 30rem),
+    linear-gradient(145deg, #eef2ed, #e8eee9);
+  box-shadow: inset 0 3px 14px #123d3408;
+}
+.viewer-state-icon {
+  color: #0d6253;
+  background: linear-gradient(145deg, #fffdf7, #e4ece7);
+  border-color: #ffffff;
+  box-shadow:
+    0 12px 25px #153d3418,
+    inset 2px 2px 4px #fff,
+    inset -3px -3px 7px #153d340a;
+}
+.viewer-state h1 {
+  color: #143e3b;
+}
+.viewer-state p {
+  color: #62766f;
+}
+.viewer-load-progress progress {
+  accent-color: #0d6253;
+  background: #d7e1db;
+}
+.viewer-load-progress progress::-webkit-progress-bar {
+  background: #d7e1db;
+}
+.viewer-load-progress progress::-webkit-progress-value,
+.viewer-load-progress progress::-moz-progress-bar {
+  background: linear-gradient(90deg, #0d6253, #c5a95b);
+}
+.viewer-retry {
+  color: #31574f;
+  background: #fbfaf4;
+  border-color: #dce1d8;
+}
+.viewer-warning {
+  color: #71591e;
+  background: #fbf4df;
+  border-bottom-color: #e4d5a9;
+}

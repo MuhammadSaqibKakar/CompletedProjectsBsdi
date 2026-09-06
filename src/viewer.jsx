@@ -105,6 +105,8 @@ export default function PresentationViewer() {
   const [fullscreen, setFullscreen] = useState(false);
   const [navigating, setNavigating] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(null);
+  const [fileAvailable, setFileAvailable] = useState(false);
+  const [retryable, setRetryable] = useState(true);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -161,6 +163,8 @@ export default function PresentationViewer() {
       setMessage("Opening presentation…");
       setWarning("");
       setPresentation(null);
+      setFileAvailable(false);
+      setRetryable(true);
       setDownloadProgress(null);
       setCurrentSlide(0);
       setSlideCount(0);
@@ -183,6 +187,13 @@ export default function PresentationViewer() {
       const file = metadata.presentation;
       if (!file || file.id !== PRESENTATION_ID)
         throw new Error("This presentation could not be found.");
+      if (file.available === false) {
+        const error = new Error(
+          "The PowerPoint file is missing from storage. The administrator needs to upload it again.",
+        );
+        error.retryable = false;
+        throw error;
+      }
       if (disposed) return;
       setPresentation(file);
       document.title = `${file.title || "Presentation"} · Completed Projects`;
@@ -196,9 +207,15 @@ export default function PresentationViewer() {
         cache: "no-store",
       });
       if (!response.ok)
-        throw new Error(
-          "The presentation file is unavailable. Please try again.",
+        throw Object.assign(
+          new Error(
+            response.status === 404
+              ? "The PowerPoint file is missing from storage. The administrator needs to upload it again."
+              : "The presentation file is unavailable. Please try again.",
+          ),
+          { retryable: response.status !== 404 },
         );
+      setFileAvailable(true);
       const buffer = await readPresentation(
         response,
         Number(file.size),
@@ -278,6 +295,7 @@ export default function PresentationViewer() {
             ? "The connection took too long. Please try again."
             : error.message || "This presentation could not be displayed.",
         );
+        setRetryable(error.retryable !== false);
         setStatus("error");
       })
       .finally(() => window.clearTimeout(timer));
@@ -407,7 +425,7 @@ export default function PresentationViewer() {
               {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </button>
           )}
-          {presentation && (
+          {presentation && fileAvailable && (
             <a
               className="viewer-download"
               href={DOWNLOAD_PATH}
@@ -475,16 +493,18 @@ export default function PresentationViewer() {
               </span>
               <h1>Preview unavailable</h1>
               <p>{message}</p>
-              <div className="viewer-state-actions">
-                <button
-                  className="viewer-retry"
-                  type="button"
-                  onClick={() => setAttempt((value) => value + 1)}
-                >
-                  <RotateCcw size={16} aria-hidden="true" />
-                  Try again
-                </button>
-              </div>
+              {retryable && (
+                <div className="viewer-state-actions">
+                  <button
+                    className="viewer-retry"
+                    type="button"
+                    onClick={() => setAttempt((value) => value + 1)}
+                  >
+                    <RotateCcw size={16} aria-hidden="true" />
+                    Try again
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -14,12 +14,12 @@ import { defaultPasswordHash } from './admin-credential.js'
 import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
 import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-06.3'
+export const release = 'district-portal-2026-09-07.1'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const notFound = (res) => res.status(404).json({ error: 'Presentation not found.' })
-const publicPresentation = (item) => ({
+const publicPresentation = (item, available = true) => ({
   id: item.id, districtId: item.districtId, title: item.title, originalName: item.originalName,
-  size: item.size, slideCount: item.slideCount, uploadedAt: item.uploadedAt,
+  size: item.size, slideCount: item.slideCount, uploadedAt: item.uploadedAt, available,
   fileUrl: `/api/presentations/${item.id}/file`,
   downloadUrl: `/api/presentations/${item.id}/download`,
   viewUrl: `/presentations/${item.id}/view`,
@@ -40,6 +40,25 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
   const cookieName = production ? '__Host-cp_session' : 'cp_session'
   const cookieOptions = { httpOnly: true, secure: production, sameSite: 'strict', path: '/' }
   const app = express()
+
+  async function presentationFileAvailable(presentation) {
+    const filePath = path.join(filesDir, presentation.storedName)
+    const stat = await fs.lstat(filePath).catch((error) => {
+      if (error.code === 'ENOENT') return null
+      throw error
+    })
+    return Boolean(
+      stat &&
+      stat.isFile() &&
+      !stat.isSymbolicLink() &&
+      stat.size === Number(presentation.size)
+    )
+  }
+
+  async function serializePresentations(presentations) {
+    return Promise.all(presentations.map(async (presentation) =>
+      publicPresentation(presentation, await presentationFileAvailable(presentation))))
+  }
   // Hostinger places the Node process behind its local reverse proxy.
   app.set('trust proxy', 'loopback, linklocal, uniquelocal')
   app.disable('x-powered-by')
@@ -89,12 +108,20 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
 
   app.get('/api/health', async (_req, res) => {
     const presentations = await storage.listPresentations()
-    res.json({ ok: true, release, storage: storage.mode, districts: districts.length, presentations: presentations.length })
+    const available = await Promise.all(presentations.map(presentationFileAvailable))
+    const availablePresentations = available.filter(Boolean).length
+    res.json({ ok: true, release, storage: storage.mode, districts: districts.length,
+      presentations: presentations.length, availablePresentations,
+      missingFiles: presentations.length - availablePresentations })
   })
   app.get('/api/districts', async (_req, res) => {
     const presentations = await storage.listPresentations()
     const counts = new Map()
-    for (const item of presentations) counts.set(item.districtId, (counts.get(item.districtId) || 0) + 1)
+    for (const item of presentations) {
+      if (await presentationFileAvailable(item)) {
+        counts.set(item.districtId, (counts.get(item.districtId) || 0) + 1)
+      }
+    }
     res.json({ districts: districts.map((district) => ({ ...district, presentationCount: counts.get(district.id) || 0 })),
       totalPresentations: presentations.length })
   })
@@ -102,7 +129,7 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
     const district = districtById.get(req.params.id)
     if (!district) return res.status(404).json({ error: 'District not found.' })
     const presentations = await storage.listPresentations(district.id)
-    res.json({ district, presentations: presentations.map(publicPresentation) })
+    res.json({ district, presentations: await serializePresentations(presentations) })
   })
 
   app.get('/api/admin/session', async (req, res) => {
@@ -178,6 +205,14 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
         finalPath = path.join(filesDir, storedName)
         await fs.rename(req.file.path, finalPath)
         await fs.chmod(finalPath, 0o600)
+        const handle = await fs.open(finalPath, 'r+')
+        try {
+          const stat = await handle.stat()
+          if (stat.size !== req.file.size) throw new Error('The uploaded presentation was not saved completely.')
+          await handle.sync()
+        } finally {
+          await handle.close()
+        }
         const metadata = { id, districtId: req.params.id, title, originalName, storedName,
           size: req.file.size, slideCount, uploadedAt: new Date().toISOString() }
         const presentation = await storage.addPresentation(metadata)
@@ -210,15 +245,14 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
     if (!UUID.test(req.params.id)) return notFound(res)
     const presentation = await storage.getPresentation(req.params.id)
     if (!presentation) return notFound(res)
-    res.json({ presentation: publicPresentation(presentation) })
+    res.json({ presentation: publicPresentation(presentation, await presentationFileAvailable(presentation)) })
   })
   async function sendPresentation(req, res, next) {
     if (!UUID.test(req.params.id)) return notFound(res)
     const presentation = await storage.getPresentation(req.params.id)
     if (!presentation) return notFound(res)
     const filePath = path.join(filesDir, presentation.storedName)
-    const stat = await fs.lstat(filePath).catch((error) => { if (error.code === 'ENOENT') return null; throw error })
-    if (!stat || !stat.isFile() || stat.isSymbolicLink()) return notFound(res)
+    if (!(await presentationFileAvailable(presentation))) return notFound(res)
     res.type('application/vnd.openxmlformats-officedocument.presentationml.presentation')
     if (req.path.endsWith('/download')) res.attachment(presentation.originalName)
     res.sendFile(filePath, { cacheControl: false, lastModified: false }, (error) => { if (error) next(error) })

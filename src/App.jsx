@@ -480,6 +480,15 @@ function DistrictPage({ id }) {
           message={detail.error}
           retry={() => setRevision((value) => value + 1)}
         />
+      ) : selected?.available === false ? (
+        <div className="empty-state district-empty missing-presentation enter">
+          <FileSliders size={42} strokeWidth={1.5} />
+          <h2>Presentation needs to be uploaded again</h2>
+          <p>The saved PowerPoint file is currently unavailable.</p>
+          <Link to="/#districts" className="button secondary">
+            Explore districts <ArrowRight size={18} />
+          </Link>
+        </div>
       ) : selected ? (
         <iframe
           key={selected.id}
@@ -643,6 +652,9 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
     revision,
   );
   const hasPresentation = Boolean(detail.data?.presentations.length);
+  const missingPresentation = detail.data?.presentations.find(
+    (presentation) => presentation.available === false,
+  );
   const uploadUnavailable =
     hasPresentation || detail.loading || Boolean(detail.error);
   const [file, setFile] = useState(null);
@@ -864,9 +876,21 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
           </div>
           {hasPresentation ? (
             <div className="upload-occupied">
-              <CircleCheck size={32} />
-              <h3>Presentation published</h3>
-              <p>Delete the current presentation before uploading a new one.</p>
+              {missingPresentation ? (
+                <FileSliders size={32} />
+              ) : (
+                <CircleCheck size={32} />
+              )}
+              <h3>
+                {missingPresentation
+                  ? "PowerPoint file missing"
+                  : "Presentation published"}
+              </h3>
+              <p>
+                {missingPresentation
+                  ? "Delete the missing record below, then upload the PowerPoint again."
+                  : "Delete the current presentation before uploading a new one."}
+              </p>
             </div>
           ) : (
             <form onSubmit={upload}>
@@ -1010,9 +1034,15 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
                       {item.slideCount} slides · {size(item.size)}
                     </span>
                     <small>Added {date(item.uploadedAt)}</small>
-                    <a href={item.downloadUrl} download>
-                      Download original <ArrowDownToLine size={13} />
-                    </a>
+                    {item.available === false ? (
+                      <strong className="managed-file-status">
+                        File missing — upload again
+                      </strong>
+                    ) : (
+                      <a href={item.downloadUrl} download>
+                        Download original <ArrowDownToLine size={13} />
+                      </a>
+                    )}
                   </div>
                   <button
                     className="delete-button icon-button"

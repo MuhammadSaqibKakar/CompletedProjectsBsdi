@@ -82,6 +82,7 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   const item = uploaded.presentation
   assert.equal(item.slideCount, 2)
   assert.equal(item.title, 'District report')
+  assert.equal(item.available, true)
   assert.equal(item.storedName, undefined)
   const catalog = await request('/api/districts').then((res) => res.json())
   assert.equal(catalog.totalPresentations, 1)
@@ -122,6 +123,40 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   const logout = await request('/api/admin/logout', { method: 'POST', headers: protectedHeaders })
   assert.equal(logout.status, 200)
   assert.equal((await request('/api/admin/session', { headers: { Cookie: cookie } }).then((res) => res.json())).authenticated, false)
+})
+
+test('reports an orphaned database record when its PowerPoint file is missing', async (t) => {
+  const { request, login, origin, dataDir } = await fixture(t)
+  const signedIn = await login()
+  const cookie = signedIn.headers.get('set-cookie').split(';')[0]
+  const { csrfToken } = await signedIn.json()
+  const protectedHeaders = { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }
+  const form = new FormData()
+  form.set('file', new Blob([await testPresentation()]), 'District report.pptx')
+  const upload = await request('/api/admin/districts/awaran/presentations', {
+    method: 'POST', headers: protectedHeaders, body: form,
+  })
+  const item = (await upload.json()).presentation
+  const [storedName] = await fs.readdir(path.join(dataDir, 'portal/files'))
+  await fs.unlink(path.join(dataDir, 'portal/files', storedName))
+
+  const detail = await request('/api/districts/awaran').then((response) => response.json())
+  assert.equal(detail.presentations[0].available, false)
+  const metadata = await request(`/api/presentations/${item.id}`).then((response) => response.json())
+  assert.equal(metadata.presentation.available, false)
+  const catalog = await request('/api/districts').then((response) => response.json())
+  assert.equal(catalog.districts.find((district) => district.id === 'awaran').presentationCount, 0)
+  const health = await request('/api/health').then((response) => response.json())
+  assert.equal(health.presentations, 1)
+  assert.equal(health.availablePresentations, 0)
+  assert.equal(health.missingFiles, 1)
+  assert.equal((await request(item.fileUrl)).status, 404)
+  assert.equal((await request(item.downloadUrl)).status, 404)
+
+  const remove = await request(`/api/admin/presentations/${item.id}`, {
+    method: 'DELETE', headers: protectedHeaders,
+  })
+  assert.equal(remove.status, 200)
 })
 
 test('rejects disguised files, active content and externally linked decks without retaining uploads', async (t) => {
