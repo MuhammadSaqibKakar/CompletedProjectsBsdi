@@ -3293,3 +3293,477 @@ h3 {
     height: 36px;
   }
 }
+
+/* Final BSDI theme: one official green with clean white surfaces. */
+:root {
+  color: #173f30;
+  background: #f1f8f4;
+  --green: #0b6b45;
+  --forest: #064b34;
+  --ink: #173f30;
+  --muted: #5d7668;
+  --border: #cfe1d7;
+  --gold: #0b6b45;
+  --paper: #ffffff;
+  --clay:
+    0 16px 36px #0b4d3320,
+    0 3px 9px #0b4d330d,
+    inset 0 1px 0 #ffffff;
+}
+
+body {
+  background: #f1f8f4;
+}
+
+::selection {
+  color: #ffffff;
+  background: #0b6b45;
+}
+
+h1,
+h2,
+h3 {
+  color: #173f30;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline-color: #62a984;
+}
+
+.sidebar {
+  color: #e6f4ec;
+  background: #064b34;
+  border-right-color: #0d5d40;
+  box-shadow: 10px 0 30px #063a2717;
+}
+
+.brand-emblem {
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 8px 20px #032d1f4d;
+}
+
+.brand strong {
+  color: #ffffff;
+}
+
+.brand small,
+.nav-label {
+  color: #b9d9c8;
+}
+
+.nav-item.active {
+  color: #075738;
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 9px 22px #032d1f38;
+}
+
+.nav-item:not(.active):hover {
+  color: #ffffff;
+  background: #0d6142;
+}
+
+.sidebar-note,
+.sidebar-bottom p {
+  color: #c9e3d5;
+}
+
+.status-light {
+  background: #9bd2b4;
+  box-shadow: 0 0 0 5px #9bd2b421;
+}
+
+.sidebar-line {
+  background: #ffffff24;
+}
+
+.sidebar-bottom > span {
+  color: #a8d4bd;
+}
+
+.main-shell,
+.page-content {
+  background: #f1f8f4;
+}
+
+.floating-menu {
+  color: #ffffff;
+  background: #0b6b45;
+  border-color: #ffffff;
+  box-shadow: 0 8px 20px #064b3438;
+}
+
+.welcome-hero {
+  background: #0b6b45;
+  border-color: #0b6b45;
+  box-shadow:
+    0 24px 54px #07523626,
+    0 5px 14px #07523618;
+}
+
+.welcome-hero::before {
+  display: none;
+}
+
+.hero-copy .eyebrow,
+.hero-copy h1,
+.hero-copy h1 span,
+.hero-copy h1 small,
+.hero-copy p {
+  color: #ffffff;
+}
+
+.hero-copy .eyebrow {
+  color: #d5ebdf;
+}
+
+.hero-copy h1 {
+  text-shadow: none;
+}
+
+.hero-copy h1 small,
+.hero-copy p {
+  color: #d9eee3;
+}
+
+.hero-copy .eyebrow-dot {
+  background: #ffffff;
+  box-shadow: 0 0 0 5px #ffffff1f;
+}
+
+.hero-link {
+  color: #075738;
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 10px 24px #06442e38;
+}
+
+.hero-link:hover,
+.hero-link:focus-visible {
+  color: #064b34;
+  background: #e5f3eb;
+  box-shadow: 0 15px 30px #06442e42;
+}
+
+.official-seal {
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 20px 42px #04352242;
+}
+
+.seal-caption {
+  color: #d8ede2;
+}
+
+.seal-orbit,
+.seal-orbit::before,
+.seal-orbit-two::before {
+  display: none;
+}
+
+.section-heading h2,
+.district-view-heading h1,
+.admin-heading h1,
+.login-intro h1 {
+  color: #124b34;
+}
+
+.eyebrow,
+.eyebrow.muted,
+.back-link,
+.page-footer {
+  color: #527362;
+}
+
+.search-field,
+.select-field,
+.text-input {
+  color: #446958;
+  background: #ffffff;
+  border-color: #cfe1d7;
+  box-shadow: 0 5px 14px #0b4d330d;
+}
+
+.search-field input,
+.select-field select,
+.district-select select,
+.text-input {
+  color: #173f30;
+}
+
+.search-field input::placeholder,
+.text-input::placeholder {
+  color: #789184;
+}
+
+.search-field:focus-within,
+.select-field:focus-within,
+.text-input:focus {
+  border-color: #0b6b45;
+  box-shadow: 0 0 0 4px #0b6b4517;
+}
+
+.clear-button,
+.icon-button,
+.district-back {
+  color: #0b6b45;
+}
+
+.icon-button:hover,
+.district-back:hover {
+  color: #075738;
+  background: #e3f1e9;
+}
+
+.district-card,
+.district-card:nth-child(3n + 2),
+.district-card:nth-child(3n) {
+  --card-pale: #13784e;
+  --card-edge: #13784e;
+  --card-accent: #ffffff;
+  --card-deep: #075b3c;
+  color: #ffffff;
+  background: #13784e;
+  border-color: #13784e;
+  box-shadow:
+    0 15px 30px #07523625,
+    0 4px 10px #07523617;
+}
+
+.district-card::before,
+.district-card::after {
+  display: none;
+}
+
+.district-card h3,
+.district-card:hover h3,
+.district-card:focus-visible h3 {
+  color: #ffffff;
+}
+
+.district-card .district-icon,
+.district-card:hover .district-icon,
+.district-card:focus-visible .district-icon {
+  color: #0b6b45;
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 7px 16px #06442e2e;
+}
+
+.district-card .district-arrow,
+.district-card:hover .district-arrow,
+.district-card:focus-visible .district-arrow {
+  color: #ffffff;
+  background: #ffffff1f;
+  border-color: #ffffff57;
+  box-shadow: none;
+}
+
+.district-card:hover,
+.district-card:focus-visible {
+  color: #ffffff;
+  background: #075b3c;
+  border-color: #075b3c;
+  transform: translateY(-11px) scale(1.025);
+  box-shadow:
+    0 24px 40px #06442e3b,
+    0 7px 14px #06442e20;
+}
+
+.district-card:active {
+  background: #064f35;
+}
+
+.district-card.skeleton {
+  background: #e2efe8;
+  border-color: #d1e4da;
+}
+
+.district-card.skeleton span,
+.skeleton span {
+  background: #c5ddcf;
+}
+
+.district-back {
+  background: #ffffff;
+  border-color: #cfe1d7;
+  box-shadow: 0 7px 16px #0b4d3317;
+}
+
+.district-full-viewer.slide-frame {
+  background: #e9f4ee;
+  border-color: #bcd8ca;
+  box-shadow:
+    0 18px 38px #0b4d331c,
+    0 3px 8px #0b4d330d;
+}
+
+.empty-state,
+.presentation-list,
+.presentation-panel,
+.admin-panel,
+.login-card,
+.delete-dialog {
+  color: #173f30;
+  background: #ffffff;
+  border-color: #d5e5dc;
+  box-shadow: 0 15px 34px #0b4d3316;
+}
+
+.empty-state h2,
+.empty-state h3,
+.login-card h2,
+.panel-heading h2,
+.admin-district-bar strong,
+.managed-item-copy strong,
+.upload-dropzone strong,
+.selected-file strong {
+  color: #174d37;
+}
+
+.empty-state p,
+.login-card > p,
+.login-intro > p,
+.login-feature p,
+.admin-heading p,
+.admin-district-bar p,
+.panel-heading p,
+.managed-item-copy span,
+.managed-item-copy small,
+.upload-help,
+.selected-file small,
+.upload-dropzone small,
+.field-label > span {
+  color: #687f73;
+}
+
+.missing-presentation,
+.upload-occupied,
+.admin-district-bar,
+.managed-note,
+.selected-file {
+  color: #315f49;
+  background: #edf7f1;
+  border-color: #cde2d7;
+}
+
+.missing-presentation h2 {
+  color: #174d37;
+}
+
+.login-feature > span,
+.login-lock,
+.summary-icon,
+.panel-icon,
+.panel-icon.peach,
+.upload-cloud,
+.managed-file-icon {
+  color: #0b6b45;
+  background: #e6f3ec;
+  border-color: #d1e5da;
+  box-shadow: 0 7px 16px #0b4d3314;
+}
+
+.admin-district-bar {
+  box-shadow: 0 12px 28px #0b4d3312;
+}
+
+.admin-panel {
+  background: #ffffff;
+}
+
+.panel-heading {
+  border-bottom-color: #dbe9e1;
+}
+
+.upload-dropzone {
+  color: #416b58;
+  background: #f4faf7;
+  border-color: #8abda2;
+  box-shadow: inset 0 0 0 1px #ffffff;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragging {
+  background: #e7f4ed;
+  border-color: #0b6b45;
+}
+
+.upload-dropzone > span:not(.upload-cloud),
+.upload-dropzone b,
+.field-label,
+.login-security,
+.managed-item-copy a,
+.upload-progress > div {
+  color: #426c58;
+}
+
+.button.primary,
+.viewer-download {
+  color: #ffffff;
+  background: #0b6b45;
+  border-color: #0b6b45;
+  box-shadow: 0 8px 18px #0752362e;
+}
+
+.button.primary:hover,
+.viewer-download:hover {
+  color: #ffffff;
+  background: #075b3c;
+  border-color: #075b3c;
+}
+
+.button.secondary {
+  color: #0b6b45;
+  background: #ffffff;
+  border-color: #bcd8ca;
+  box-shadow: 0 6px 14px #0b4d3312;
+}
+
+.button.secondary:hover {
+  color: #075738;
+  background: #eaf5ef;
+}
+
+.managed-file-status {
+  color: #98523a !important;
+}
+
+.notice.success {
+  color: #0b6843;
+  background: #e7f5ed;
+  border-color: #b9dcc9;
+}
+
+.notice.error,
+.error-state {
+  color: #8c4938;
+  background: #fff4f0;
+  border-color: #ecd2c9;
+}
+
+.loading-state {
+  color: #527362;
+}
+
+.delete-button,
+.delete-dialog-icon {
+  color: #a4473a;
+}
+
+.delete-button:hover,
+.delete-dialog-icon {
+  background: #fff0ec;
+}
+
+.delete-dialog::backdrop {
+  background: #063a2a8f;
+}
+
+.page-footer {
+  border-color: #d5e5dc;
+}

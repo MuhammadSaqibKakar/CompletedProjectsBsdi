@@ -490,3 +490,107 @@ a svg {
   background: #fbf4df;
   border-bottom-color: #e4d5a9;
 }
+
+/* Presentation controls use the same plain BSDI green and white palette. */
+:root {
+  color: #173f30;
+  background: #f1f8f4;
+}
+
+.presentation-viewer {
+  background: #f1f8f4;
+}
+
+.viewer-toolbar {
+  background: #ffffff;
+  border-bottom-color: #d5e5dc;
+  box-shadow: 0 4px 14px #0b4d330d;
+}
+
+.viewer-icon-button {
+  color: #0b6b45;
+  background: #f2f8f5;
+  border-color: #d7e7df;
+  box-shadow: 0 5px 12px #0b4d3312;
+}
+
+.viewer-icon-button:hover:not(:disabled),
+.viewer-icon-button:focus-visible:not(:disabled) {
+  color: #ffffff;
+  background: #0b6b45;
+  border-color: #0b6b45;
+  box-shadow: 0 8px 16px #07523626;
+}
+
+.viewer-page-count {
+  color: #315f49;
+}
+
+.viewer-control-divider {
+  background: #d5e5dc;
+}
+
+.viewer-download {
+  color: #ffffff;
+  background: #0b6b45;
+  border-color: #0b6b45;
+  box-shadow: 0 7px 16px #0752362e;
+}
+
+.viewer-download:hover,
+.viewer-download:focus-visible {
+  background: #075b3c;
+  border-color: #075b3c;
+  box-shadow: 0 10px 20px #07523638;
+}
+
+.viewer-main {
+  background: #eaf5ef;
+  box-shadow: inset 0 3px 13px #0b4d3308;
+}
+
+.viewer-state-icon {
+  color: #0b6b45;
+  background: #ffffff;
+  border-color: #d4e6dc;
+  box-shadow: 0 10px 22px #0b4d3318;
+}
+
+.viewer-state h1 {
+  color: #174d37;
+}
+
+.viewer-state p {
+  color: #667f72;
+}
+
+.viewer-load-progress progress,
+.viewer-load-progress progress::-webkit-progress-bar {
+  background: #d3e7dc;
+  accent-color: #0b6b45;
+}
+
+.viewer-load-progress progress::-webkit-progress-value,
+.viewer-load-progress progress::-moz-progress-bar {
+  background: #0b6b45;
+}
+
+.viewer-retry {
+  color: #0b6b45;
+  background: #ffffff;
+  border-color: #bfdacd;
+  box-shadow: 0 5px 12px #0b4d3312;
+}
+
+.viewer-retry:hover,
+.viewer-retry:focus-visible {
+  color: #075738;
+  background: #e8f4ed;
+  border-color: #9fcab4;
+}
+
+.viewer-warning {
+  color: #315f49;
+  background: #e8f4ed;
+  border-bottom-color: #c9e0d4;
+}
