@@ -1,0 +1,2 @@
+// Password verifier only. Override with ADMIN_PASSWORD_HASH to rotate.
+export const defaultPasswordHash = "scrypt$99ed323e63740ec1fb8dbd9fe8ad1ed6c0178b94f0c20fb85a13ba9637c6333e$c26b1561b629f5a74c66ac755b174514dc20e97058eaa645bb3e62bea38d72ed71d74360a2d3e26508fed73c8385edcced0fab1cdb0a47faa9166b5f3bc9f274"

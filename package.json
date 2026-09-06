@@ -16,11 +16,18 @@
     "start": "node server/index.js"
   },
   "dependencies": {
+    "@aiden0z/pptx-renderer": "1.2.4",
     "compression": "^1.8.1",
     "express": "^5.2.1",
+    "express-rate-limit": "8.7.0",
+    "fast-xml-parser": "5.11.1",
+    "helmet": "8.3.0",
+    "lucide-react": "1.41.0",
+    "multer": "2.3.0",
     "mysql2": "^3.22.3",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "yauzl": "3.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
