@@ -14,7 +14,7 @@ export function isolatedViewerShell(id, viewerHtml) {
   // There is no standalone renderer HTML route that can escape the frame sandbox.
   return withDocumentPolicy(`<!doctype html><html lang="en"><head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="robots" content="noindex,nofollow"><title>Presentation · Completed Projects</title>
+    <meta name="robots" content="noindex,nofollow"><title>Presentation · Completed Projects</title><link rel="icon" href="/official-logo.svg" type="image/svg+xml">
     <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f4f7f5}iframe{width:100%;height:100%;border:0;display:block}</style>
     </head><body><iframe title="PowerPoint slide viewer" sandbox="allow-scripts allow-downloads" allow="fullscreen" allowfullscreen referrerpolicy="no-referrer" srcdoc="${attribute(content)}"></iframe></body></html>`)
 }

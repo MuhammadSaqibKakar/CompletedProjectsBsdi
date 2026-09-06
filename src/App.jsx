@@ -3,8 +3,6 @@ import {
   ArrowDownToLine,
   ArrowLeft,
   ArrowRight,
-  Check,
-  CheckCheck,
   ChevronDown,
   ChevronRight,
   CircleCheck,
@@ -19,7 +17,6 @@ import {
   Menu,
   Search,
   ShieldCheck,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -27,7 +24,16 @@ import {
 function navigate(to) {
   window.history.pushState({}, "", to);
   window.dispatchEvent(new PopStateEvent("popstate"));
-  window.scrollTo({ top: 0, behavior: "instant" });
+  const section = to.split("#")[1];
+  if (section)
+    requestAnimationFrame(() =>
+      document.getElementById(section)?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "instant"
+          : "smooth",
+      }),
+    );
+  else window.scrollTo({ top: 0, behavior: "instant" });
 }
 function Link({ to, children, onClick, ...props }) {
   return (
@@ -129,6 +135,7 @@ export default function App() {
   const [today] = useState(() => Date.now());
   const [pathname, setPathname] = useState(window.location.pathname);
   const [menuOpen, setMenuOpen] = useState(false);
+  const sidebarRef = useRef(null);
   const [revision, setRevision] = useState(0);
   const catalog = useLoad("/api/districts", revision);
   const admin = pathname.replace(/\/$/, "") === "/admin";
@@ -145,14 +152,50 @@ export default function App() {
     return () => window.removeEventListener("popstate", update);
   }, []);
   useEffect(() => {
-    document.title = `${admin ? "Administration" : selectedDistrict?.name || "Completed Projects"} | BSDI`;
+    document.title = admin
+      ? "Administration | BSDI"
+      : selectedDistrict?.name
+        ? `${selectedDistrict.name} | BSDI Completed Projects`
+        : "BSDI Completed Projects Dashboard";
   }, [admin, selectedDistrict?.name]);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 780px)");
+    const closeOnDesktop = () => {
+      if (!mobile.matches) setMenuOpen(false);
+    };
+    mobile.addEventListener("change", closeOnDesktop);
+    return () => mobile.removeEventListener("change", closeOnDesktop);
+  }, []);
   useEffect(() => {
     if (!menuOpen) return;
     const previous = document.body.style.overflow;
+    const previousFocus = document.activeElement;
     document.body.style.overflow = "hidden";
+    const sidebar = sidebarRef.current;
+    const links = sidebar.querySelectorAll("a[href], button");
+    // Wait for the drawer's visibility transition to begin before focusing it.
+    let focusFrame = requestAnimationFrame(() => {
+      focusFrame = requestAnimationFrame(() => links[0]?.focus());
+    });
+    const handleKey = (event) => {
+      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key !== "Tab") return;
+      const first = links[0];
+      const last = links[links.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKey);
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previous;
+      document.removeEventListener("keydown", handleKey);
+      previousFocus?.focus();
     };
   }, [menuOpen]);
   return (
@@ -167,17 +210,27 @@ export default function App() {
           aria-label="Close navigation"
         />
       )}
-      <aside className={`sidebar ${menuOpen ? "is-open" : ""}`}>
+      <aside
+        ref={sidebarRef}
+        id="site-navigation"
+        className={`sidebar ${menuOpen ? "is-open" : ""}`}
+      >
         <Link to="/" className="brand">
           <span className="brand-emblem">
-            <CheckCheck size={26} strokeWidth={2.2} />
+            <img
+              className="brand-logo"
+              src="/official-logo.svg"
+              alt="BSDI emblem"
+              width="64"
+              height="64"
+            />
           </span>
           <span>
             <strong>BSDI</strong>
             <small>COMPLETED PROJECTS</small>
           </span>
         </Link>
-        <p className="nav-label">WORKSPACE</p>
+        <p className="nav-label">COMPLETED PROJECTS</p>
         <nav aria-label="Main navigation">
           <Link
             to="/"
@@ -187,7 +240,10 @@ export default function App() {
             <span>Dashboard</span>
             <ChevronRight size={15} />
           </Link>
-          <Link to="/" className={`nav-item ${districtId ? "active" : ""}`}>
+          <Link
+            to="/#districts"
+            className={`nav-item ${districtId ? "active" : ""}`}
+          >
             <MapPin size={19} />
             <span>District directory</span>
             <span className="nav-count">39</span>
@@ -201,11 +257,6 @@ export default function App() {
         </nav>
         <div className="sidebar-note">
           <span className="status-light" /> Completed projects only
-          <p>
-            A dedicated space for the work
-            <br />
-            delivered across Balochistan.
-          </p>
         </div>
         <div className="sidebar-bottom">
           <div className="sidebar-line" />
@@ -214,20 +265,22 @@ export default function App() {
             <br />
             Development Initiative
           </p>
-          <span>PROGRESS, PRESENTED.</span>
+          <span>Planning & Development Department</span>
         </div>
       </aside>
-      <div className="main-shell">
+      <div className="main-shell" inert={menuOpen || undefined}>
         <header className="topbar">
           <div className="breadcrumbs">
             <button
               className="icon-button mobile-menu"
               onClick={() => setMenuOpen(true)}
               aria-label="Open navigation"
+              aria-controls="site-navigation"
+              aria-expanded={menuOpen}
             >
               <Menu size={21} />
             </button>
-            <span className="breadcrumb-home">Workspace</span>
+            <span className="breadcrumb-home">BSDI</span>
             <ChevronRight size={14} />
             <strong>
               {admin
@@ -241,7 +294,7 @@ export default function App() {
             <span className="today">{date(today)}</span>
             <span className="topbar-divider" />
             <span className="profile-mark" aria-label="BSDI">
-              B
+              <ShieldCheck size={20} />
             </span>
           </div>
         </header>
@@ -270,6 +323,7 @@ export default function App() {
 }
 
 function Dashboard({ catalog, retry }) {
+  const gridRef = useRef(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const districts = catalog.data?.districts || [];
@@ -281,44 +335,63 @@ function Dashboard({ catalog, retry }) {
   const published = districts.filter(
     (district) => district.presentationCount > 0,
   ).length;
+  const visibleKey = visible.map((district) => district.id).join(",");
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (
+      !grid ||
+      !("IntersectionObserver" in window) ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    const cards = [...grid.querySelectorAll(".district-card")];
+    grid.classList.add("reveal-ready");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-revealed");
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.08, rootMargin: "0px 0px 30px 0px" },
+    );
+    cards.forEach((card) => observer.observe(card));
+    return () => {
+      observer.disconnect();
+      grid.classList.remove("reveal-ready");
+    };
+  }, [visibleKey, catalog.loading]);
   return (
     <>
       <section className="welcome-hero enter">
         <div className="hero-copy">
           <span className="eyebrow">
-            <span className="eyebrow-dot" /> THE COMPLETED PROJECTS PORTAL
+            <span className="eyebrow-dot" /> BALOCHISTAN SPECIAL DEVELOPMENT
+            INITIATIVE
           </span>
           <h1>
-            Good to see you.
-            <br />
-            <span>Explore what’s complete.</span>
+            BSDI <span>Completed Projects</span> <small>Dashboard</small>
           </h1>
-          <p>
-            This dashboard brings together completed BSDI projects.
-            <br className="desktop-break" /> Select a district to view and
-            download its presentations.
-          </p>
+          <p>Completed projects, district by district.</p>
           <a className="hero-link" href="#districts">
-            Explore the districts <ArrowRight size={17} />
+            Explore districts <ArrowRight size={21} />
           </a>
         </div>
-        <div className="hero-art" aria-hidden="true">
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-          <div className="art-dot dot-one" />
-          <div className="art-dot dot-two" />
-          <div className="art-card art-back" />
-          <div className="art-card art-front">
-            <span className="art-mini">BSDI / PROJECTS</span>
-            <span className="art-check">
-              <Check size={37} strokeWidth={2.3} />
-            </span>
-            <strong>Work delivered.</strong>
-            <span className="art-rule" />
-            <span className="art-rule short" />
-          </div>
-          <span className="art-badge">
-            <CircleCheck size={16} /> Completed
+        <div className="hero-seal">
+          <div className="seal-orbit" aria-hidden="true" />
+          <div className="seal-orbit seal-orbit-two" aria-hidden="true" />
+          <img
+            className="official-seal"
+            src="/official-logo.svg"
+            width="300"
+            height="300"
+            alt="Balochistan Special Development Initiative, Planning and Development Department"
+            fetchPriority="high"
+          />
+          <span className="seal-caption">
+            Planning & Development Department
           </span>
         </div>
       </section>
@@ -329,7 +402,7 @@ function Dashboard({ catalog, retry }) {
           </span>
           <div>
             <strong>39</strong>
-            <span>Districts to explore</span>
+            <span>Districts</span>
           </div>
         </div>
         <div className="summary-item">
@@ -342,7 +415,7 @@ function Dashboard({ catalog, retry }) {
                 ? "—"
                 : (catalog.data?.totalPresentations ?? "—")}
             </strong>
-            <span>Published presentations</span>
+            <span>Presentations</span>
           </div>
         </div>
         <div className="summary-item">
@@ -351,26 +424,16 @@ function Dashboard({ catalog, retry }) {
           </span>
           <div>
             <strong>{catalog.loading ? "—" : published}</strong>
-            <span>Districts with presentations</span>
+            <span>Districts published</span>
           </div>
-        </div>
-        <div className="summary-description">
-          <Sparkles size={17} />
-          <span>
-            Your district.
-            <br />
-            <strong>Its completed story.</strong>
-          </span>
         </div>
       </section>
       <section className="directory-section" id="districts">
         <div className="section-heading">
           <div>
-            <span className="eyebrow muted">EXPLORE BY LOCATION</span>
             <h2>
-              District directory <span className="count-pill">39</span>
+              Explore districts <span className="count-pill">39</span>
             </h2>
-            <p>Every district has a place. Find the one you’re looking for.</p>
           </div>
           <div className="directory-tools">
             <label className="search-field">
@@ -409,25 +472,24 @@ function Dashboard({ catalog, retry }) {
         ) : catalog.error ? (
           <ErrorState message={catalog.error} retry={retry} />
         ) : visible.length ? (
-          <div className="district-grid">
+          <div className="district-grid" ref={gridRef}>
             {visible.map((district, index) => (
               <Link
                 to={`/district/${district.id}`}
                 className="district-card"
                 key={district.id}
-                style={{ "--order": Math.min(index, 11) }}
+                style={{ "--order": index % 3 }}
               >
                 <div className="district-card-top">
                   <span
                     className={`district-icon ${district.presentationCount ? "has-content" : ""}`}
                   >
-                    <MapPin size={22} strokeWidth={1.7} />
+                    <MapPin size={28} strokeWidth={1.7} />
                   </span>
                   <span className="district-arrow">
-                    <ArrowRight size={18} />
+                    <ArrowRight size={22} />
                   </span>
                 </div>
-                <span className="district-region">BALOCHISTAN</span>
                 <h3>{district.name}</h3>
                 <div className="district-card-bottom">
                   {district.presentationCount ? (
@@ -439,7 +501,7 @@ function Dashboard({ catalog, retry }) {
                   ) : (
                     <span className="pending-label">
                       <span />
-                      Awaiting presentation
+                      Coming soon
                     </span>
                   )}
                   <FileSliders size={15} />
@@ -500,10 +562,7 @@ function DistrictPage({ id }) {
                 <MapPin size={14} /> BALOCHISTAN · DISTRICT
               </span>
               <h1>{detail.data.district.name}</h1>
-              <p>
-                Explore the district’s completed projects through its
-                presentations.
-              </p>
+              <p>Completed project presentations.</p>
             </div>
             <span className="district-heading-badge">
               <FileSliders size={17} />
@@ -576,13 +635,10 @@ function DistrictPage({ id }) {
                   <FileSliders size={18} />
                 </span>
               </span>
-              <span className="eyebrow muted">A SPACE FOR COMPLETED WORK</span>
-              <h2>The presentation is on its way.</h2>
+              <h2>Presentations coming soon</h2>
               <p>
                 No presentations have been published for{" "}
                 {detail.data.district.name} yet.
-                <br />
-                They’ll appear here as soon as the administrator uploads them.
               </p>
               <Link to="/" className="button secondary">
                 Explore other districts <ArrowRight size={16} />
@@ -651,13 +707,8 @@ function LoginForm({ onLogin }) {
         <span className="eyebrow">
           <ShieldCheck size={16} /> ADMINISTRATION
         </span>
-        <h1>
-          A little behind <br />
-          the scenes.
-        </h1>
-        <p>
-          Manage the presentations that tell each district’s completed story.
-        </p>
+        <h1>District presentation management.</h1>
+        <p>Publish and manage completed project presentations.</p>
         <div className="login-feature">
           <span>
             <FileUp size={20} />
@@ -875,7 +926,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
             <ShieldCheck size={15} /> ADMINISTRATION
           </span>
           <h1>Presentation manager</h1>
-          <p>A simple home for each district’s completed work.</p>
+          <p>Manage completed project presentations.</p>
         </div>
         <button
           className="button secondary"
@@ -951,7 +1002,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
             </span>
             <div>
               <h2>Add a presentation</h2>
-              <p>Ready to share some completed work?</p>
+              <p>Upload to the selected district.</p>
             </div>
           </div>
           <form onSubmit={upload}>
@@ -1114,7 +1165,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
           ) : (
             <div className="empty-state compact admin-empty">
               <FolderOpen size={35} strokeWidth={1.4} />
-              <h3>A fresh start for this district.</h3>
+              <h3>No presentations yet</h3>
               <p>
                 Upload a presentation to make it available
                 <br />
