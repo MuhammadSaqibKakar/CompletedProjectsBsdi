@@ -681,7 +681,9 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
     (presentation) => presentation.available === false,
   );
   const uploadUnavailable =
-    hasPresentation || detail.loading || Boolean(detail.error);
+    (hasPresentation && !missingPresentation) ||
+    detail.loading ||
+    Boolean(detail.error);
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -899,26 +901,20 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
               <p>Upload to the selected district.</p>
             </div>
           </div>
-          {hasPresentation ? (
+          {hasPresentation && !missingPresentation ? (
             <div className="upload-occupied">
-              {missingPresentation ? (
-                <FileSliders size={32} />
-              ) : (
-                <CircleCheck size={32} />
-              )}
-              <h3>
-                {missingPresentation
-                  ? "PowerPoint file missing"
-                  : "Presentation published"}
-              </h3>
-              <p>
-                {missingPresentation
-                  ? "Delete the missing record below, then upload the PowerPoint again."
-                  : "Delete the current presentation before uploading a new one."}
-              </p>
+              <CircleCheck size={32} />
+              <h3>Presentation published</h3>
+              <p>Delete the current presentation before uploading a new one.</p>
             </div>
           ) : (
             <form onSubmit={upload}>
+              {missingPresentation && (
+                <div className="notice error" role="alert">
+                  <FileSliders size={18} />
+                  <span>The stored file is missing. Upload the PowerPoint again to repair it.</span>
+                </div>
+              )}
               <label
                 className={`upload-dropzone ${dragging ? "dragging" : ""} ${busy || uploadUnavailable ? "disabled" : ""}`}
                 onDragOver={(event) => {

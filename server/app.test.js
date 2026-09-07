@@ -7,7 +7,7 @@ import { randomBytes, scryptSync } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { createPortalStorage } from './portal-storage.js'
-import { createApp } from './app.js'
+import { createApp, release } from './app.js'
 import { testPresentation } from './test-pptx.js'
 import { hashToken, verifyPassword } from './auth.js'
 
@@ -16,10 +16,11 @@ const testPassword = 'fixture-password-only'
 const salt = randomBytes(32).toString('hex')
 const verifier = `scrypt$${salt}$${scryptSync(testPassword, salt, 64, { N: 32768, r: 8, p: 1, maxmem: 67108864 }).toString('hex')}`
 
-async function fixture(t, { production = false } = {}) {
+async function fixture(t, { production = false, decorateStorage } = {}) {
   const dataDir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'completed-portal-api-')))
-  const storage = createPortalStorage({ dataDir, env: {} })
-  await storage.initialize()
+  const baseStorage = createPortalStorage({ dataDir, env: {} })
+  await baseStorage.initialize()
+  const storage = decorateStorage ? decorateStorage(baseStorage) : baseStorage
   const env = { NODE_ENV: production ? 'production' : 'test', ADMIN_PASSWORD_HASH: verifier }
   const app = await createApp({ rootDir, dataDir, storage, env })
   const server = app.listen(0, '127.0.0.1')
@@ -52,6 +53,18 @@ test('public district catalog uses exactly the supplied names and starts empty',
   assert.equal((await request('/api/state')).status, 404)
   assert.equal((await request('/server/admin-credential.js')).status, 404)
   assert.equal((await request('/viewer.html')).status, 404)
+  const healthResponse = await request('/api/health')
+  assert.equal(healthResponse.status, 200)
+  assert.deepEqual(await healthResponse.json(), {
+    ok: true,
+    release,
+    presentationStorage: 'local',
+    storage: 'json',
+    districts: 39,
+    presentations: 0,
+    availablePresentations: 0,
+    missingFiles: 0,
+  })
   const page = await request('/').then((response) => response.text())
   assert.match(page, /http-equiv="Content-Security-Policy"/)
   assert.match(page, /script-src 'self'/)
@@ -125,7 +138,7 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   assert.equal((await request('/api/admin/session', { headers: { Cookie: cookie } }).then((res) => res.json())).authenticated, false)
 })
 
-test('reports an orphaned database record when its PowerPoint file is missing', async (t) => {
+test('reports and atomically repairs an orphaned database record when its PowerPoint file is missing', async (t) => {
   const { request, login, origin, dataDir } = await fixture(t)
   const signedIn = await login()
   const cookie = signedIn.headers.get('set-cookie').split(';')[0]
@@ -146,14 +159,70 @@ test('reports an orphaned database record when its PowerPoint file is missing', 
   assert.equal(metadata.presentation.available, false)
   const catalog = await request('/api/districts').then((response) => response.json())
   assert.equal(catalog.districts.find((district) => district.id === 'awaran').presentationCount, 0)
-  const health = await request('/api/health').then((response) => response.json())
+  const healthResponse = await request('/api/health')
+  const health = await healthResponse.json()
+  assert.equal(healthResponse.status, 200)
+  assert.equal(health.ok, false)
+  assert.equal(health.release, release)
+  assert.equal(health.presentationStorage, 'local')
+  assert.equal(health.storage, 'json')
+  assert.equal(health.districts, 39)
   assert.equal(health.presentations, 1)
   assert.equal(health.availablePresentations, 0)
   assert.equal(health.missingFiles, 1)
   assert.equal((await request(item.fileUrl)).status, 404)
   assert.equal((await request(item.downloadUrl)).status, 404)
 
-  const remove = await request(`/api/admin/presentations/${item.id}`, {
+  const invalidRepairForm = new FormData()
+  invalidRepairForm.set('file', new Blob([Buffer.from('not a presentation')]), 'Invalid repair.pptx')
+  const invalidRepair = await request('/api/admin/districts/awaran/presentations', {
+    method: 'POST', headers: protectedHeaders, body: invalidRepairForm,
+  })
+  assert.equal(invalidRepair.status, 400)
+  assert.equal((await request('/api/districts/awaran').then((response) => response.json())).presentations[0].id, item.id)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/files')), [])
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
+
+  const replacementBuffer = await testPresentation()
+  const replacementForm = new FormData()
+  replacementForm.set('file', new Blob([replacementBuffer]), 'Repaired district report.pptx')
+  replacementForm.set('title', 'Repaired district report')
+  const repair = await request('/api/admin/districts/awaran/presentations', {
+    method: 'POST', headers: protectedHeaders, body: replacementForm,
+  })
+  const repaired = await repair.json()
+  assert.equal(repair.status, 201, JSON.stringify(repaired))
+  assert.notEqual(repaired.presentation.id, item.id)
+  assert.equal(repaired.presentation.title, 'Repaired district report')
+  assert.equal(repaired.presentation.available, true)
+  assert.equal((await request(item.downloadUrl)).status, 404)
+  const repairedDownload = await request(repaired.presentation.downloadUrl)
+  assert.equal(repairedDownload.status, 200)
+  assert.deepEqual(Buffer.from(await repairedDownload.arrayBuffer()), replacementBuffer)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
+  const repairedDetail = await request('/api/districts/awaran').then((response) => response.json())
+  assert.equal(repairedDetail.presentations.length, 1)
+  assert.equal(repairedDetail.presentations[0].id, repaired.presentation.id)
+  assert.equal(repairedDetail.presentations[0].available, true)
+  const repairedHealthResponse = await request('/api/health')
+  const repairedHealth = await repairedHealthResponse.json()
+  assert.equal(repairedHealthResponse.status, 200)
+  assert.equal(repairedHealth.presentations, 1)
+  assert.equal(repairedHealth.availablePresentations, 1)
+  assert.equal(repairedHealth.missingFiles, 0)
+
+  const occupiedForm = new FormData()
+  occupiedForm.set('file', new Blob([replacementBuffer]), 'Should not replace healthy report.pptx')
+  const occupied = await request('/api/admin/districts/awaran/presentations', {
+    method: 'POST', headers: protectedHeaders, body: occupiedForm,
+  })
+  assert.equal(occupied.status, 409)
+  assert.match((await occupied.json()).error, /already has a presentation/)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
+
+  const remove = await request(`/api/admin/presentations/${repaired.presentation.id}`, {
     method: 'DELETE', headers: protectedHeaders,
   })
   assert.equal(remove.status, 200)
@@ -179,6 +248,77 @@ test('rejects disguised files, active content and externally linked decks withou
   }
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/files')), [])
+})
+
+test('keeps a presentation when MySQL commits but its acknowledgement is lost', async (t) => {
+  const { request, login, origin, dataDir } = await fixture(t, {
+    decorateStorage(base) {
+      return {
+        ...base,
+        mode: 'mysql',
+        async addPresentation(metadata) {
+          await base.addPresentation(metadata)
+          throw new Error('simulated lost commit acknowledgement')
+        },
+        async replacePresentation(expectedId, metadata) {
+          await base.replacePresentation(expectedId, metadata)
+          throw new Error('simulated lost commit acknowledgement')
+        },
+      }
+    },
+  })
+  const signedIn = await login()
+  const cookie = signedIn.headers.get('set-cookie').split(';')[0]
+  const { csrfToken } = await signedIn.json()
+  const headers = { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }
+  const buffer = await testPresentation()
+  const firstForm = new FormData()
+  firstForm.set('file', new Blob([buffer]), 'Initial report.pptx')
+  const firstResponse = await request('/api/admin/districts/barkhan/presentations', {
+    method: 'POST', headers, body: firstForm,
+  })
+  const first = await firstResponse.json()
+  assert.equal(firstResponse.status, 201, JSON.stringify(first))
+  const [firstStoredName] = await fs.readdir(path.join(dataDir, 'portal/files'))
+  await fs.unlink(path.join(dataDir, 'portal/files', firstStoredName))
+
+  const replacementForm = new FormData()
+  replacementForm.set('file', new Blob([buffer]), 'Recovered report.pptx')
+  const replacementResponse = await request('/api/admin/districts/barkhan/presentations', {
+    method: 'POST', headers, body: replacementForm,
+  })
+  const replacement = await replacementResponse.json()
+  assert.equal(replacementResponse.status, 201, JSON.stringify(replacement))
+  assert.notEqual(replacement.presentation.id, first.presentation.id)
+  assert.equal((await request(replacement.presentation.downloadUrl)).status, 200)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
+})
+
+test('retains a durable file while a MySQL commit outcome cannot be checked', async (t) => {
+  const { request, login, origin, dataDir } = await fixture(t, {
+    decorateStorage(base) {
+      return {
+        ...base,
+        mode: 'mysql',
+        async addPresentation() { throw new Error('simulated uncertain write') },
+        async getPresentation() { throw new Error('simulated database outage') },
+      }
+    },
+  })
+  const signedIn = await login()
+  const cookie = signedIn.headers.get('set-cookie').split(';')[0]
+  const { csrfToken } = await signedIn.json()
+  const form = new FormData()
+  form.set('file', new Blob([await testPresentation()]), 'Uncertain report.pptx')
+  const response = await request('/api/admin/districts/barkhan/presentations', {
+    method: 'POST',
+    headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken },
+    body: form,
+  })
+  assert.equal(response.status, 503)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
 })
 
 test('persistent login throttling, wrong password, missing origin and production cookie flags', async (t) => {

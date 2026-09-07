@@ -64,6 +64,17 @@ function fakeMysql() {
       presentations.set(id, { id, districtId, title, originalName, storedName, size, slideCount, uploadedAt })
       return [{ affectedRows: 1 }]
     }
+    if (sql.startsWith('UPDATE completed_presentations SET id = ?')) {
+      const [id, title, originalName, storedName, size, slideCount, uploadedAt, expectedId, districtId] = values
+      const current = presentations.get(expectedId)
+      if (!current || current.districtId !== districtId) return [{ affectedRows: 0 }]
+      if (id !== expectedId && presentations.has(id)) {
+        throw Object.assign(new Error('duplicate database private content'), { code: 'ER_DUP_ENTRY' })
+      }
+      presentations.delete(expectedId)
+      presentations.set(id, { id, districtId, title, originalName, storedName, size, slideCount, uploadedAt })
+      return [{ affectedRows: 1 }]
+    }
     if (sql.startsWith('SELECT id, district_id AS districtId')) {
       let rows = [...presentations.values()]
       if (sql.includes(' WHERE id = ?')) rows = rows.filter((entry) => entry.id === values[0])
@@ -196,6 +207,38 @@ test('one presentation per district rejects concurrent additions and permits a n
     await assert.rejects(reopened.addPresentation(presentation()), (error) => error.status === 409)
     await storage.close()
     await reopened.close()
+  }
+})
+
+test('orphan repair atomically replaces only the expected district record', async (t) => {
+  for (const mode of ['json', 'mysql']) {
+    const context = await fixture(t)
+    const fake = fakeMysql()
+    const options = mode === 'mysql' ? { env: fake.env, createPool: fake.createPool } : {}
+    const storage = createPortalStorage({ ...context, ...options })
+    await storage.initialize()
+    const original = presentation()
+    const replacement = presentation({ title: 'Repaired presentation' })
+    await storage.addPresentation(original)
+
+    assert.deepEqual(await storage.replacePresentation(original.id, replacement), replacement, mode)
+    assert.equal(await storage.getPresentation(original.id), null, mode)
+    assert.deepEqual(await storage.listPresentations('barkhan'), [replacement], mode)
+
+    const staleReplacement = presentation({ title: 'Stale repair' })
+    await assert.rejects(storage.replacePresentation(original.id, staleReplacement), (error) => {
+      assert.equal(error.status, 409)
+      assert.match(error.message, /changed/)
+      return true
+    }, mode)
+    assert.deepEqual(await storage.listPresentations('barkhan'), [replacement], mode)
+    if (mode === 'mysql') {
+      assert.equal(fake.lifecycle.began, 2)
+      assert.equal(fake.lifecycle.committed, 1)
+      assert.equal(fake.lifecycle.rolledBack, 1)
+      assert.equal(fake.lifecycle.released, 2)
+    }
+    await storage.close()
   }
 })
 

@@ -9,6 +9,7 @@ const enabled = (value) => /^(1|true|required)$/i.test(value || '')
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const PRESENTATION_COLUMNS = 'id, district_id AS districtId, title, original_name AS originalName, stored_name AS storedName, size, slide_count AS slideCount, uploaded_at AS uploadedAt'
 const districtOccupied = () => Object.assign(new Error('This district already has a presentation. Delete it before uploading another.'), { status: 409 })
+const presentationChanged = () => Object.assign(new Error('The district presentation changed. Refresh and try again.'), { status: 409 })
 
 function mysqlConfigFromEnv(env) {
   const urlValue = env.DATABASE_URL || env.MYSQL_URL || ''
@@ -330,6 +331,44 @@ export function createPortalStorage({ dataDir, env = process.env, createPool = (
     })
   }
 
+  async function replacePresentation(expectedId, metadata) {
+    requireInitialized()
+    if (!UUID.test(expectedId || '')) throw presentationChanged()
+    const record = presentationRecord(metadata)
+    if (mode === 'mysql') {
+      let connection
+      try {
+        connection = await pool.getConnection()
+        await connection.beginTransaction()
+        const [rows] = await databaseQuery(`SELECT ${PRESENTATION_COLUMNS} FROM completed_presentations WHERE district_id = ? FOR UPDATE`, [record.districtId], connection)
+        if (rows.length !== 1 || rows[0].id !== expectedId) throw presentationChanged()
+        await databaseQuery(`UPDATE completed_presentations SET id = ?, title = ?, original_name = ?, stored_name = ?,
+          size = ?, slide_count = ?, uploaded_at = ? WHERE id = ? AND district_id = ?`,
+        [record.id, record.title, record.originalName, record.storedName, record.size, record.slideCount,
+          record.uploadedAt, expectedId, record.districtId], connection)
+        await connection.commit()
+        return record
+      } catch (error) {
+        if (connection) await connection.rollback().catch(() => {})
+        if (error.status === 409) throw error
+        if (error.code === 'ER_DUP_ENTRY') throw districtOccupied()
+        throw new Error('Portal database operation failed.', { cause: error })
+      } finally {
+        if (connection) connection.release()
+      }
+    }
+    return mutateLocal((next) => {
+      const index = next.presentations.findIndex((entry) => entry.districtId === record.districtId)
+      if (index < 0 || next.presentations[index].id !== expectedId) throw presentationChanged()
+      if (next.presentations.some((entry, position) => position !== index &&
+          (entry.id === record.id || entry.storedName === record.storedName))) {
+        throw new Error('Presentation already exists.')
+      }
+      next.presentations[index] = record
+      return record
+    })
+  }
+
   async function deletePresentation(id) {
     requireInitialized()
     if (mode === 'mysql') {
@@ -447,5 +486,5 @@ export function createPortalStorage({ dataDir, env = process.env, createPool = (
     }
   }
 
-  return { mode, initialize, listPresentations, getPresentation, addPresentation, deletePresentation, createSession, getSession, deleteSession, consumeLoginAttempt, close }
+  return { mode, initialize, listPresentations, getPresentation, addPresentation, replacePresentation, deletePresentation, createSession, getSession, deleteSession, consumeLoginAttempt, close }
 }

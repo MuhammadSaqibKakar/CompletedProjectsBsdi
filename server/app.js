@@ -14,7 +14,7 @@ import { defaultPasswordHash } from './admin-credential.js'
 import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
 import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-07.2'
+export const release = 'district-portal-2026-09-07.3'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const notFound = (res) => res.status(404).json({ error: 'Presentation not found.' })
 const publicPresentation = (item, available = true) => ({
@@ -25,7 +25,12 @@ const publicPresentation = (item, available = true) => ({
   viewUrl: `/presentations/${item.id}/view`,
 })
 
-export async function createApp({ rootDir, dataDir, storage, env = process.env }) {
+function samePresentation(first, second) {
+  return ['id', 'districtId', 'title', 'originalName', 'storedName', 'size', 'slideCount', 'uploadedAt']
+    .every((field) => first?.[field] === second[field])
+}
+
+export async function createApp({ rootDir, dataDir, storage, env = process.env, fileStorageSource = 'local' }) {
   const production = env.NODE_ENV === 'production' || storage.mode === 'mysql' || /^(1|true|required)$/i.test(env.BSDI_REQUIRE_MYSQL || '')
   const distDir = path.join(rootDir, 'dist')
   const filesDir = path.join(dataDir, 'portal', 'files')
@@ -110,9 +115,10 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
     const presentations = await storage.listPresentations()
     const available = await Promise.all(presentations.map(presentationFileAvailable))
     const availablePresentations = available.filter(Boolean).length
-    res.json({ ok: true, release, storage: storage.mode, districts: districts.length,
-      presentations: presentations.length, availablePresentations,
-      missingFiles: presentations.length - availablePresentations })
+    const missingFiles = presentations.length - availablePresentations
+    res.json({ ok: missingFiles === 0, release, presentationStorage: fileStorageSource,
+      storage: storage.mode, districts: districts.length, presentations: presentations.length,
+      availablePresentations, missingFiles })
   })
   app.get('/api/districts', async (_req, res) => {
     const presentations = await storage.listPresentations()
@@ -180,15 +186,18 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
   app.post('/api/admin/districts/:id/presentations', requireOrigin, requireAdmin, requireCsrf,
     (req, res, next) => districtById.has(req.params.id) ? next() : res.status(404).json({ error: 'District not found.' }),
     async (req, res, next) => {
-      if ((await storage.listPresentations(req.params.id)).length) {
+      const [existing] = await storage.listPresentations(req.params.id)
+      if (existing && await presentationFileAvailable(existing)) {
         return res.status(409).json({ error: 'This district already has a presentation. Delete it before uploading another.' })
       }
+      req.orphanedPresentation = existing || null
       next()
     },
     upload.single('file'), async (req, res) => {
       if (!req.file) return res.status(400).json({ error: 'Choose a PowerPoint .pptx file.' })
       let finalPath
       let saved = false
+      let retainFinalFile = false
       try {
         if (Object.keys(req.body).some((key) => key !== 'title') ||
             (req.body.title !== undefined && typeof req.body.title !== 'string')) {
@@ -215,12 +224,40 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env }
         }
         const metadata = { id, districtId: req.params.id, title, originalName, storedName,
           size: req.file.size, slideCount, uploadedAt: new Date().toISOString() }
-        const presentation = await storage.addPresentation(metadata)
-        saved = true
+        let presentation
+        try {
+          presentation = req.orphanedPresentation
+            ? await storage.replacePresentation(req.orphanedPresentation.id, metadata)
+            : await storage.addPresentation(metadata)
+          saved = true
+        } catch (error) {
+          if (storage.mode !== 'mysql') throw error
+          let observed
+          try {
+            observed = await storage.getPresentation(id)
+          } catch {
+            // A failed verification leaves the durable file in place. A later
+            // database recovery can safely reconnect it; deleting it could
+            // create a permanent metadata record with no presentation file.
+            retainFinalFile = true
+            throw error
+          }
+          if (!samePresentation(observed, metadata)) throw error
+          presentation = observed
+          saved = true
+        }
+        if (req.orphanedPresentation) {
+          const orphanPath = path.join(filesDir, req.orphanedPresentation.storedName)
+          if (orphanPath !== finalPath) {
+            await fs.unlink(orphanPath).catch((error) => {
+              if (error.code !== 'ENOENT') console.error('Orphaned presentation cleanup failed.')
+            })
+          }
+        }
         res.status(201).json({ presentation: publicPresentation(presentation) })
       } finally {
         await fs.unlink(req.file.path).catch((error) => { if (error.code !== 'ENOENT') console.error('Temporary upload cleanup failed.') })
-        if (finalPath && !saved) await fs.unlink(finalPath).catch(() => {})
+        if (finalPath && !saved && !retainFinalFile) await fs.unlink(finalPath).catch(() => {})
       }
     })
   app.delete('/api/admin/presentations/:id', requireOrigin, requireAdmin, requireCsrf, async (req, res) => {

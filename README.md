@@ -58,16 +58,23 @@ Keep the existing `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
 TLS settings use `DB_SSL` / `MYSQL_SSL` and
 `DB_SSL_REJECT_UNAUTHORIZED`.
 
-Keep `BSDI_DATA_DIR` at the existing persistent location outside redeployed
-application files. New presentations live in `BSDI_DATA_DIR/portal/files`.
+On Hostinger, the server automatically keeps presentations in
+`/home/{username}/domains/{domain}/bsdi-data`, beside the managed `nodejs` and
+`public_html` directories. That location survives GitHub deployments. On other
+production hosts, set `BSDI_DATA_DIR` to an absolute, private persistent folder
+outside the deployment, build, temporary, and public web directories. Startup
+refuses unsafe or unwritable locations. Presentations live in
+`BSDI_DATA_DIR/portal/files`.
 MySQL tables `completed_presentations`, `completed_admin_sessions`, and
 `completed_login_limits` store metadata, sessions, and login throttling.
 Startup preserves uploaded content. The former destructive maintenance startup
 has been removed.
 
 Each district has one presentation. A database unique index enforces this across
-workers; the administrator deletes the current presentation before uploading its
-replacement. The district page opens that presentation in a viewport-sized viewer.
+workers. The administrator deletes an available presentation before uploading its
+replacement; if metadata survives but its file is missing, uploading again repairs
+that district directly. The district page opens the presentation in a viewport-sized
+viewer.
 
 Development without MySQL stores metadata in
 `server-data/portal/metadata.json`. This JSON adapter is for a single local
