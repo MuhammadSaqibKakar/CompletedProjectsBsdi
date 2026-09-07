@@ -58,12 +58,13 @@ Keep the existing `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
 TLS settings use `DB_SSL` / `MYSQL_SSL` and
 `DB_SSL_REJECT_UNAUTHORIZED`.
 
-On Hostinger, the server automatically keeps presentations in
+On Hostinger, set `BSDI_DATA_DIR` to the account's absolute private domain path,
 `/home/{username}/domains/{domain}/bsdi-data`, beside the managed `nodejs` and
-`public_html` directories. That location survives GitHub deployments. On other
-production hosts, set `BSDI_DATA_DIR` to an absolute, private persistent folder
-outside the deployment, build, temporary, and public web directories. Startup
-refuses unsafe or unwritable locations. Presentations live in
+`public_html` directories. The server also derives that same location when the
+standard Hostinger runtime path is visible. This location survives GitHub
+deployments. On other production hosts, use an absolute, private persistent
+folder outside deployment, build, temporary, and public web directories.
+Startup refuses unsafe or unwritable locations. Presentations live in
 `BSDI_DATA_DIR/portal/files`.
 MySQL tables `completed_presentations`, `completed_admin_sessions`, and
 `completed_login_limits` store metadata, sessions, and login throttling.
