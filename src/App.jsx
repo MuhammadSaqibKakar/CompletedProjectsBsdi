@@ -397,9 +397,6 @@ function Dashboard({ catalog, retry }) {
               fetchPriority="high"
             />
           </span>
-          <span className="seal-caption">
-            Planning & Development Department
-          </span>
         </div>
       </section>
       <section className="directory-section" id="districts">
