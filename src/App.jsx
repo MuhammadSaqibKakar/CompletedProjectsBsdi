@@ -421,7 +421,7 @@ function Dashboard({ catalog, retry }) {
                 to={`/district/${district.id}`}
                 className="district-card"
                 key={district.id}
-                style={{ "--order": index % 3 }}
+                style={{ "--order": Math.min(index, 7) }}
               >
                 <div className="district-card-top">
                   <span className="district-icon">
