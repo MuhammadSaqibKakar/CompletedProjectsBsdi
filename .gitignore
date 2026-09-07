@@ -10,6 +10,7 @@ tmp/
 .vscode/
 .idea/
 .DS_Store
+.codex-artifacts/
 # Legacy content must not be bundled again.
 *.ppt
 *.pptx

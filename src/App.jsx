@@ -305,6 +305,9 @@ export default function App() {
 
 function Dashboard({ catalog, retry }) {
   const gridRef = useRef(null);
+  const [revealedDistricts, setRevealedDistricts] = useState(
+    () => new Set(),
+  );
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const districts = catalog.data?.districts || [];
@@ -324,11 +327,30 @@ function Dashboard({ catalog, retry }) {
       return;
     const cards = [...grid.querySelectorAll(".district-card")];
     grid.classList.add("reveal-ready");
+    const markRevealed = (card) => {
+      card.classList.add("is-revealed");
+      const district = card.dataset.districtId;
+      if (district)
+        setRevealedDistricts((current) => {
+          if (current.has(district)) return current;
+          const next = new Set(current);
+          next.add(district);
+          return next;
+        });
+    };
+    const revealVisible = () => {
+      for (const card of cards) {
+        if (card.classList.contains("is-revealed")) continue;
+        const bounds = card.getBoundingClientRect();
+        if (bounds.top < window.innerHeight + 30 && bounds.bottom > -30)
+          markRevealed(card);
+      }
+    };
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            entry.target.classList.add("is-revealed");
+            markRevealed(entry.target);
             observer.unobserve(entry.target);
           }
         }
@@ -336,7 +358,13 @@ function Dashboard({ catalog, retry }) {
       { threshold: 0.08, rootMargin: "0px 0px 30px 0px" },
     );
     cards.forEach((card) => observer.observe(card));
+    const fallback = window.setTimeout(revealVisible, 120);
+    window.addEventListener("scroll", revealVisible, { passive: true });
+    window.addEventListener("resize", revealVisible);
     return () => {
+      window.clearTimeout(fallback);
+      window.removeEventListener("scroll", revealVisible);
+      window.removeEventListener("resize", revealVisible);
       observer.disconnect();
       grid.classList.remove("reveal-ready");
     };
@@ -346,11 +374,12 @@ function Dashboard({ catalog, retry }) {
       <section className="welcome-hero enter">
         <div className="hero-copy">
           <span className="eyebrow">
-            <span className="eyebrow-dot" /> BALOCHISTAN SPECIAL DEVELOPMENT
-            INITIATIVE
+            BALOCHISTAN SPECIAL DEVELOPMENT INITIATIVE
           </span>
           <h1>
-            BSDI <span>Completed Projects</span> <small>Dashboard</small>
+            <span className="hero-title-brand">BSDI</span>
+            <span className="hero-title-main">Completed Projects</span>
+            <small>Dashboard</small>
           </h1>
           <p>Completed projects, district by district.</p>
           <a className="hero-link" href="#districts">
@@ -358,16 +387,16 @@ function Dashboard({ catalog, retry }) {
           </a>
         </div>
         <div className="hero-seal">
-          <div className="seal-orbit" aria-hidden="true" />
-          <div className="seal-orbit seal-orbit-two" aria-hidden="true" />
-          <img
-            className="official-seal"
-            src="/official-logo.svg"
-            width="300"
-            height="300"
-            alt="Balochistan Special Development Initiative, Planning and Development Department"
-            fetchPriority="high"
-          />
+          <span className="seal-medallion">
+            <img
+              className="official-seal"
+              src="/official-logo.svg"
+              width="300"
+              height="300"
+              alt="Balochistan Special Development Initiative, Planning and Development Department"
+              fetchPriority="high"
+            />
+          </span>
           <span className="seal-caption">
             Planning & Development Department
           </span>
@@ -419,19 +448,18 @@ function Dashboard({ catalog, retry }) {
             {visible.map((district, index) => (
               <Link
                 to={`/district/${district.id}`}
-                className="district-card"
+                className={`district-card ${revealedDistricts.has(district.id) ? "is-revealed" : ""}`}
                 key={district.id}
+                data-district-id={district.id}
                 style={{ "--order": Math.min(index, 7) }}
               >
-                <div className="district-card-top">
-                  <span className="district-icon">
-                    <MapPin size={28} strokeWidth={1.7} />
-                  </span>
-                  <span className="district-arrow">
-                    <ArrowRight size={22} />
-                  </span>
-                </div>
+                <span className="district-icon">
+                  <MapPin size={24} strokeWidth={1.7} />
+                </span>
                 <h3>{district.name}</h3>
+                <span className="district-arrow">
+                  <ArrowRight size={19} />
+                </span>
               </Link>
             ))}
           </div>

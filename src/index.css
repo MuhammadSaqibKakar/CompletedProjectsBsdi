@@ -1,28 +1,25 @@
 :root {
   font-family: Inter, "Segoe UI", Arial, sans-serif;
-  color: #12251e;
-  background: #f6f8f7;
+  color: #17231e;
+  background: #f7f8f5;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --green-950: #07533f;
-  --green-900: #07533f;
-  --green-800: #0b6b4f;
-  --green-700: #14845f;
-  --green-100: #eef6f2;
-  --green-50: #eef6f2;
-  --page: #f6f8f7;
+  --page: #f7f8f5;
   --surface: #ffffff;
-  --text: #12251e;
-  --muted: #66756f;
-  --border: rgba(9, 83, 62, 0.1);
-  --border-strong: rgba(9, 83, 62, 0.16);
+  --green: #0a513b;
+  --green-deep: #073d2e;
+  --green-accent: #147357;
+  --green-tint: #eef6f2;
+  --ink: #17231e;
+  --muted: #66736d;
+  --border: #dde4df;
+  --gold: #b79a57;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --shadow-control: 0 5px 14px rgba(5, 67, 49, 0.08);
-  --shadow-card: 0 14px 34px rgba(5, 67, 49, 0.12);
-  --shadow-card-hover: 0 21px 42px rgba(4, 58, 43, 0.19);
-  --shadow-hero: 0 28px 64px rgba(4, 58, 43, 0.2);
+  --shadow-control: 0 3px 12px rgba(18, 38, 29, 0.05);
+  --shadow-card: 0 6px 22px rgba(18, 38, 29, 0.06);
+  --shadow-card-hover: 0 12px 30px rgba(18, 38, 29, 0.12);
 }
 
 * {
@@ -40,6 +37,7 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
+  background: var(--page);
 }
 
 body,
@@ -78,14 +76,14 @@ button:disabled {
 button,
 input,
 select {
-  outline-offset: 4px;
+  outline-offset: 3px;
 }
 
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 3px solid rgba(20, 132, 95, 0.46);
+  outline: 3px solid rgba(20, 115, 87, 0.3);
 }
 
 h1,
@@ -98,12 +96,12 @@ p {
 h1,
 h2,
 h3 {
-  color: var(--text);
+  color: var(--ink);
   letter-spacing: -0.035em;
 }
 
 p {
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
 svg {
@@ -112,7 +110,7 @@ svg {
 
 ::selection {
   color: #ffffff;
-  background: var(--green-800);
+  background: var(--green);
 }
 
 @media (prefers-reduced-motion: reduce) {
