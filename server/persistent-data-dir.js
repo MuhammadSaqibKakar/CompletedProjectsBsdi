@@ -90,10 +90,18 @@ async function prepareCandidate({ configuredPath, deploymentRoot, temporaryRoots
       throw new Error('Production presentation storage must use a dedicated real directory.')
     }
     const realCandidate = await fileSystem.realpath(candidate)
-    if (!samePath(candidate, realCandidate, pathApi)) {
-      throw new Error('Production presentation storage cannot use a redirected directory.')
-    }
-    validatePersistentDataPath({ configuredPath: realCandidate, deploymentRoot, temporaryRoots, pathApi })
+    const realDeploymentRoot = deploymentRoot
+      ? await fileSystem.realpath(deploymentRoot)
+      : deploymentRoot
+    // Hostinger may canonicalize an ancestor of the domain directory. The
+    // requested data directory itself is already proven not to be a symlink;
+    // validate both canonical paths to preserve the deployment boundary.
+    validatePersistentDataPath({
+      configuredPath: realCandidate,
+      deploymentRoot: realDeploymentRoot,
+      temporaryRoots,
+      pathApi,
+    })
     await fileSystem.access(realCandidate, fsConstants.W_OK)
     const probePath = pathApi.join(realCandidate, `.bsdi-write-probe-${randomUUID()}`)
     let handle

@@ -14,7 +14,7 @@ import { defaultPasswordHash } from './admin-credential.js'
 import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
 import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-07.3'
+export const release = 'district-portal-2026-09-07.4'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const notFound = (res) => res.status(404).json({ error: 'Presentation not found.' })
 const publicPresentation = (item, available = true) => ({
@@ -30,7 +30,14 @@ function samePresentation(first, second) {
     .every((field) => first?.[field] === second[field])
 }
 
-export async function createApp({ rootDir, dataDir, storage, env = process.env, fileStorageSource = 'local' }) {
+export async function createApp({
+  rootDir,
+  dataDir,
+  storage,
+  env = process.env,
+  fileStorageSource = 'local',
+  fileStorageIssue = '',
+}) {
   const production = env.NODE_ENV === 'production' || storage.mode === 'mysql' || /^(1|true|required)$/i.test(env.BSDI_REQUIRE_MYSQL || '')
   const distDir = path.join(rootDir, 'dist')
   const filesDir = path.join(dataDir, 'portal', 'files')
@@ -117,6 +124,7 @@ export async function createApp({ rootDir, dataDir, storage, env = process.env, 
     const availablePresentations = available.filter(Boolean).length
     const missingFiles = presentations.length - availablePresentations
     res.json({ ok: missingFiles === 0, release, presentationStorage: fileStorageSource,
+      ...(fileStorageIssue ? { presentationStorageIssue: fileStorageIssue } : {}),
       storage: storage.mode, districts: districts.length, presentations: presentations.length,
       availablePresentations, missingFiles })
   })

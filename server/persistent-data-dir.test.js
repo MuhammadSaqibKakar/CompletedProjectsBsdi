@@ -73,6 +73,42 @@ test('Hostinger always uses the durable domain sibling instead of deployment con
   assert.equal(files.size, 0)
 })
 
+test('canonicalized Hostinger ancestors remain safe outside the canonical deployment', async () => {
+  const directories = new Set()
+  const files = new Set()
+  const logicalDeployment = '/home/u123/domains/completedprojects.online/nodejs/releases/42'
+  const logicalData = '/home/u123/domains/completedprojects.online/bsdi-data'
+  const fakeFileSystem = {
+    async mkdir(directory) { directories.add(directory) },
+    async lstat(directory) {
+      assert.ok(directories.has(directory))
+      return { isDirectory: () => true, isSymbolicLink: () => false }
+    },
+    async realpath(directory) {
+      if (directory === logicalData) return '/srv/accounts/u123/domains/completedprojects.online/bsdi-data'
+      if (directory === logicalDeployment) return '/srv/accounts/u123/domains/completedprojects.online/nodejs/releases/42'
+      return directory
+    },
+    async access(directory) { assert.equal(directory, '/srv/accounts/u123/domains/completedprojects.online/bsdi-data') },
+    async open(file) {
+      files.add(file)
+      return { writeFile: async () => {}, sync: async () => {}, close: async () => {} }
+    },
+    async unlink(file) { files.delete(file) },
+  }
+  const result = await prepareProductionDataDir({
+    configuredPath: '/srv/otherwise-valid/presentation-data',
+    deploymentRoot: logicalDeployment,
+    temporaryRoots: [], pathApi: path.posix, fileSystem: fakeFileSystem,
+  })
+  assert.deepEqual(result, {
+    dataDir: '/srv/accounts/u123/domains/completedprojects.online/bsdi-data',
+    source: 'hostinger',
+    replacedUnsafeConfiguration: true,
+  })
+  assert.equal(files.size, 0)
+})
+
 test('Hostinger does not silently fall back when its durable directory is unavailable', async () => {
   const fakeFileSystem = {
     async mkdir() { throw Object.assign(new Error('permission denied'), { code: 'EACCES' }) },
@@ -89,6 +125,7 @@ test('prepared storage is writable and leaves no probe file', async (t) => {
   const deploymentRoot = path.join(fixtureRoot, 'nodejs')
   const configuredPath = path.join(fixtureRoot, 'bsdi-data')
   t.after(async () => fs.rm(fixtureRoot, { recursive: true, force: true }))
+  await fs.mkdir(deploymentRoot)
   const result = await prepareProductionDataDir({ configuredPath, deploymentRoot, temporaryRoots: [] })
   assert.equal(result.dataDir, configuredPath)
   assert.equal(result.source, 'configured')
