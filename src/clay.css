@@ -1700,26 +1700,26 @@ body {
 
   .welcome-hero {
     height: auto;
-    min-height: 448px;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 170px;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 1fr;
   }
 
   .hero-copy {
-    padding: 25px 28px 18px;
+    padding: 25px 4px 18px 28px;
   }
 
   .hero-seal {
     gap: 6px;
-    padding: 8px 20px 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.11);
+    padding: 8px 8px 8px 0;
+    border-top: 0;
     border-left: 0;
   }
 
   .seal-medallion {
-    width: 168px;
-    height: 168px;
-    flex-basis: 168px;
+    width: clamp(64px, 22vw, 168px);
+    height: clamp(64px, 22vw, 168px);
+    flex-basis: clamp(64px, 22vw, 168px);
     padding: 8px;
     border-width: 4px;
   }
@@ -1810,12 +1810,12 @@ body {
   }
 
   .welcome-hero {
-    min-height: 438px;
+    min-height: 0;
     border-radius: 16px;
   }
 
   .hero-copy {
-    padding: 23px 21px 15px;
+    padding: 23px 0 15px 21px;
   }
 
   .eyebrow {
@@ -1829,7 +1829,7 @@ body {
 
   .hero-title-main {
     max-width: 310px;
-    font-size: 38px;
+    font-size: 37px;
     line-height: 0.98;
   }
 
@@ -1846,9 +1846,6 @@ body {
   }
 
   .seal-medallion {
-    width: 144px;
-    height: 144px;
-    flex-basis: 144px;
     padding: 7px;
   }
 
