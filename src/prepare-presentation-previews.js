@@ -32,6 +32,40 @@ async function waitForImages(root, signal) {
   );
 }
 
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result), { once: true });
+    reader.addEventListener("error", () => reject(reader.error), { once: true });
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function inlineSvgImageFills(root, signal) {
+  await Promise.all(
+    [...root.querySelectorAll("svg image")].map(async (image) => {
+      checkAbort(signal);
+      const href =
+        image.href?.baseVal ||
+        image.getAttribute("href") ||
+        image.getAttribute("xlink:href");
+      if (!href?.startsWith("blob:")) return;
+      const response = await fetch(href, { signal });
+      if (!response.ok) {
+        throw new Error("An embedded slide image could not be prepared.");
+      }
+      const dataUrl = await blobToDataUrl(await response.blob());
+      checkAbort(signal);
+      image.setAttribute("href", dataUrl);
+      image.setAttributeNS(
+        "http://www.w3.org/1999/xlink",
+        "xlink:href",
+        dataUrl,
+      );
+    }),
+  );
+}
+
 async function dataUrlBytes(dataUrl) {
   const response = await fetch(dataUrl);
   if (!response.ok) throw new Error("A slide preview could not be encoded.");
@@ -91,7 +125,9 @@ export async function preparePresentationPreviews(
     viewer = new PptxViewer(parseHost, {
       fitMode: "contain",
       lazySlides: true,
-      lazyMedia: true,
+      // Shape picture fills (including the GIS maps) need eager media data.
+      // The renderer cannot resolve those fills after a lazy slide is mounted.
+      lazyMedia: false,
       pdfjs: false,
       zipLimits: {
         ...RECOMMENDED_ZIP_LIMITS,
@@ -133,6 +169,7 @@ export async function preparePresentationPreviews(
       if (!handle?.element) throw new Error(`Slide ${index + 1} could not be prepared.`);
       try {
         await handle.ready;
+        await inlineSvgImageFills(handle.element, signal);
         await waitForImages(handle.element, signal);
         await nextFrame();
         checkAbort(signal);
