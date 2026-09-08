@@ -696,10 +696,13 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
   const [deleteItem, setDeleteItem] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [rebuildingId, setRebuildingId] = useState("");
+  const [replacingId, setReplacingId] = useState("");
   const [dragging, setDragging] = useState(false);
   const uploadRef = useRef(null);
   const preparationRef = useRef(null);
   const fileRef = useRef(null);
+  const replacementFileRef = useRef(null);
+  const replacementItemRef = useRef(null);
   useEffect(
     () => () => {
       preparationRef.current?.abort();
@@ -930,8 +933,97 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
       uploadRef.current = null;
     }
   }
+  function chooseReplacement(item) {
+    if (!item?.id || busy || deleting) return;
+    replacementItemRef.current = item;
+    if (replacementFileRef.current) {
+      replacementFileRef.current.value = "";
+      replacementFileRef.current.click();
+    }
+  }
+  async function replacePresentation(item, replacementFile) {
+    if (!item?.id || !replacementFile || busy || deleting) return;
+    if (!/\.pptx$/i.test(replacementFile.name)) {
+      setError("Choose one PowerPoint .pptx file.");
+      return;
+    }
+    if (replacementFile.size < 1 || replacementFile.size > 200 * 1024 * 1024) {
+      setError("Choose a presentation of 200 MB or smaller.");
+      return;
+    }
+    setBusy(true);
+    setReplacingId(item.id);
+    setProgress(0);
+    setProgressLabel("Loading preview tools…");
+    setError("");
+    setMessage("");
+    const controller = new AbortController();
+    preparationRef.current = controller;
+    try {
+      const prepared = await preparePresentationPreviews(replacementFile, {
+        signal: controller.signal,
+        onProgress: ({ label, value }) => {
+          setProgressLabel(label);
+          setProgress(Number.isFinite(value) ? value : 0);
+        },
+      });
+      const form = new FormData();
+      form.append("file", replacementFile);
+      form.append("previews", prepared.archive);
+      setProgress(0);
+      setProgressLabel("Uploading corrected presentation and previews…");
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        uploadRef.current = xhr;
+        xhr.open("POST", `/api/admin/presentations/${item.id}/replace`);
+        xhr.withCredentials = true;
+        xhr.setRequestHeader("X-CSRF-Token", session.csrfToken);
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable)
+            setProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        xhr.onload = () => {
+          let data = {};
+          try {
+            data = JSON.parse(xhr.responseText);
+          } catch {
+            /* The server may return a hosting error page. */
+          }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else reject(Object.assign(new Error(data.error || "The presentation could not be replaced."), { status: xhr.status }));
+        };
+        xhr.onerror = () => reject(new Error("The connection was interrupted. Please try again."));
+        xhr.onabort = () => reject(new Error("Replacement cancelled."));
+        xhr.send(form);
+      });
+      setProgress(100);
+      setProgressLabel("Replacement complete.");
+      setMessage("Presentation and slide previews replaced together. Visitors never receive a mixed version.");
+      refresh();
+    } catch (error) {
+      failure(error);
+    } finally {
+      setBusy(false);
+      setReplacingId("");
+      preparationRef.current = null;
+      uploadRef.current = null;
+      replacementItemRef.current = null;
+      if (replacementFileRef.current) replacementFileRef.current.value = "";
+    }
+  }
   return (
     <>
+      <input
+        ref={replacementFileRef}
+        type="file"
+        accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        hidden
+        onChange={(event) => {
+          const item = replacementItemRef.current;
+          const replacementFile = event.target.files?.[0];
+          if (item && replacementFile) replacePresentation(item, replacementFile);
+        }}
+      />
       <div className="admin-heading enter">
         <div>
           <span className="eyebrow muted">
@@ -1187,6 +1279,23 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
                         type="button"
                         className="managed-preview-button"
                         disabled={busy || deleting}
+                        onClick={() => chooseReplacement(item)}
+                      >
+                        {replacingId === item.id ? (
+                          <LoaderCircle size={13} className="spin" />
+                        ) : (
+                          <FileUp size={13} />
+                        )}
+                        {replacingId === item.id
+                          ? "Replacing presentation…"
+                          : "Replace presentation"}
+                      </button>
+                    )}
+                    {item.originalAvailable && (
+                      <button
+                        type="button"
+                        className="managed-preview-button"
+                        disabled={busy || deleting}
                         onClick={() => rebuildPreviews(item)}
                       >
                         {rebuildingId === item.id ? (
@@ -1199,7 +1308,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
                           : "Rebuild previews"}
                       </button>
                     )}
-                    {rebuildingId === item.id && (
+                    {(rebuildingId === item.id || replacingId === item.id) && (
                       <div className="managed-preview-progress" role="status">
                         <span>{progressLabel}</span>
                         <strong>{progress}%</strong>

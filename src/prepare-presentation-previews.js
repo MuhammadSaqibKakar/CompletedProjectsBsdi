@@ -2,6 +2,8 @@ const MAX_FILE_BYTES = 200 * 1024 * 1024;
 const MAX_PREVIEW_ARCHIVE_BYTES = 200 * 1024 * 1024;
 const TARGET_LONG_EDGE = 1600;
 const JPEG_QUALITY = 0.9;
+const WEBSITE_TEXT_PART = /^ppt\/(?:slides\/slide\d+|slideLayouts\/slideLayout\d+|slideMasters\/slideMaster\d+)\.xml$/i;
+const TAB_ALIGNED_TEXT = /<a:t\b[^>]*>[\s\S]*?(?:\t|&#(?:0*9|x0*9);)[\s\S]*?<\/a:t>/i;
 
 function abortError() {
   return new DOMException("Preview preparation was cancelled.", "AbortError");
@@ -72,6 +74,22 @@ async function dataUrlBytes(dataUrl) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+async function assertRendererSafeText(buffer, JSZip, signal) {
+  const packageZip = await JSZip.loadAsync(buffer);
+  const textParts = Object.keys(packageZip.files).filter(
+    (name) => WEBSITE_TEXT_PART.test(name) && !packageZip.files[name].dir,
+  );
+  for (const name of textParts) {
+    checkAbort(signal);
+    const xml = await packageZip.files[name].async("string");
+    if (TAB_ALIGNED_TEXT.test(xml)) {
+      throw new Error(
+        "This PowerPoint uses tab-aligned text that cannot render safely on the website. Replace tabs with fixed text columns or a table before uploading.",
+      );
+    }
+  }
+}
+
 export async function preparePresentationPreviews(
   file,
   { signal, onProgress = () => {} } = {},
@@ -121,6 +139,9 @@ export async function preparePresentationPreviews(
   try {
     onProgress({ phase: "open", label: "Opening PowerPoint…", value: 0 });
     const buffer = await file.arrayBuffer();
+    checkAbort(signal);
+    onProgress({ phase: "check", label: "Checking website-safe text…", value: 0 });
+    await assertRendererSafeText(buffer, JSZip, signal);
     checkAbort(signal);
     viewer = new PptxViewer(parseHost, {
       fitMode: "contain",

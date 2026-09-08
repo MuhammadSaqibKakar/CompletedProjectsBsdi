@@ -204,6 +204,54 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   assert.equal((await request('/api/admin/session', { headers: { Cookie: cookie } }).then((res) => res.json())).authenticated, false)
 })
 
+test('atomically replaces a presentation and its matching previews', async (t) => {
+  const { request, login, origin, dataDir } = await fixture(t)
+  const signedIn = await login()
+  const cookie = signedIn.headers.get('set-cookie').split(';')[0]
+  const { csrfToken } = await signedIn.json()
+  const headers = { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }
+  const initialBuffer = await testPresentation({ title: 'Initial version' })
+  const initialResponse = await request('/api/admin/districts/duki/presentations', {
+    method: 'POST', headers, body: await presentationForm(initialBuffer, 'Duki initial.pptx', 'Duki'),
+  })
+  const initial = (await initialResponse.json()).presentation
+  assert.equal(initialResponse.status, 201)
+  const invalidReplacement = new FormData()
+  invalidReplacement.set('file', new Blob([await testPresentation({ title: 'Invalid replacement' })]), 'Duki invalid.pptx')
+  invalidReplacement.set('previews', new Blob([await testPreviews({ slideCount: 1 })]), 'Duki invalid.previews.zip')
+  const rejected = await request(`/api/admin/presentations/${initial.id}/replace`, {
+    method: 'POST', headers, body: invalidReplacement,
+  })
+  assert.equal(rejected.status, 400)
+  assert.equal((await request(`/api/presentations/${initial.id}`)).status, 200)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
+
+  const replacementBuffer = await testPresentation({ title: 'Corrected version' })
+  const replacementForm = new FormData()
+  replacementForm.set('file', new Blob([replacementBuffer]), 'Duki corrected.pptx')
+  replacementForm.set('previews', new Blob([await testPreviews({ markerOffset: 200 })]), 'Duki corrected.previews.zip')
+  const replacementResponse = await request(`/api/admin/presentations/${initial.id}/replace`, {
+    method: 'POST', headers, body: replacementForm,
+  })
+  const replaced = (await replacementResponse.json()).presentation
+  assert.equal(replacementResponse.status, 200)
+  assert.notEqual(replaced.id, initial.id)
+  assert.equal(replaced.districtId, 'duki')
+  assert.equal(replaced.title, 'Duki')
+  assert.equal(replaced.originalName, 'Duki corrected.pptx')
+  assert.equal(replaced.available, true)
+  assert.equal((await request(`/api/presentations/${initial.id}`)).status, 404)
+  assert.equal((await request(`${initial.preview.baseUrl}/slide-0001.jpg`)).status, 404)
+  const newSlide = await request(`${replaced.preview.baseUrl}/slide-0001.jpg?v=${replaced.preview.cacheKey}`)
+  assert.deepEqual(Buffer.from(await newSlide.arrayBuffer()), testJpeg({ marker: 201 }))
+  const download = await request(`/api/admin/presentations/${replaced.id}/download`, { headers: { Cookie: cookie } })
+  assert.deepEqual(Buffer.from(await download.arrayBuffer()), replacementBuffer)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
+})
+
 test('reports and atomically repairs an orphaned database record when its PowerPoint file is missing', async (t) => {
   const { request, login, origin, dataDir } = await fixture(t)
   const signedIn = await login()
@@ -306,6 +354,7 @@ test('rejects disguised files, active content and externally linked decks withou
     ['old.ppt', await testPresentation()],
     ['macro.pptx', await testPresentation({ active: true })],
     ['linked.pptx', await testPresentation({ external: true })],
+    ['tab-aligned.pptx', await testPresentation({ tabAligned: true })],
   ]) {
     const form = new FormData()
     form.set('file', new Blob([buffer]), name)

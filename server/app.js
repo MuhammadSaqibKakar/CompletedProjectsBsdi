@@ -15,7 +15,7 @@ import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
 import { validateAndExtractPreviewZip, MAX_PREVIEW_ARCHIVE_BYTES } from './validate-previews.js'
 import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-08.3'
+export const release = 'district-portal-2026-09-09.1'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const notFound = (res) => res.status(404).json({ error: 'Presentation not found.' })
 const publicPresentation = (item, status) => ({
@@ -391,6 +391,107 @@ export async function createApp({
       } finally {
         await Promise.all([pptUpload.path, previewUpload.path].map((temporaryPath) =>
           fs.unlink(temporaryPath).catch((error) => { if (error.code !== 'ENOENT') console.error('Temporary upload cleanup failed.') })))
+        if (stagingPreviewPath) await fs.rm(stagingPreviewPath, { recursive: true, force: true }).catch(() => {})
+        if (finalPath && !saved && !retainFinalArtifacts) await fs.unlink(finalPath).catch(() => {})
+        if (finalPreviewPath && !saved && !retainFinalArtifacts) {
+          await removePreviewDirectory(path.basename(finalPreviewPath)).catch(() => {})
+        }
+      }
+    })
+  app.post('/api/admin/presentations/:id/replace', requireOrigin, requireAdmin, requireCsrf,
+    (req, res, next) => UUID.test(req.params.id) ? next() : notFound(res),
+    upload.fields([{ name: 'file', maxCount: 1 }, { name: 'previews', maxCount: 1 }]), async (req, res) => {
+      const pptUpload = req.files?.file?.[0]
+      const previewUpload = req.files?.previews?.[0]
+      if (!pptUpload || !previewUpload) {
+        await Promise.all(Object.values(req.files || {}).flat().map((uploaded) =>
+          fs.unlink(uploaded.path).catch((error) => { if (error.code !== 'ENOENT') console.error('Temporary replacement upload cleanup failed.') })))
+        return res.status(400).json({ error: 'Choose a PowerPoint file and wait for every slide preview to finish.' })
+      }
+      let finalPath
+      let finalPreviewPath
+      let stagingPreviewPath
+      let saved = false
+      let retainFinalArtifacts = false
+      try {
+        if (Object.keys(req.body).some((key) => key !== 'title') ||
+            (req.body.title !== undefined && typeof req.body.title !== 'string')) {
+          return res.status(400).json({ error: 'Upload one replacement presentation, its previews, and an optional title.' })
+        }
+        const previous = await storage.getPresentation(req.params.id)
+        if (!previous) return notFound(res)
+        const originalName = path.basename(pptUpload.originalname.replaceAll('\\', '/')).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200)
+        const title = String(req.body.title === undefined ? previous.title : req.body.title).trim()
+        if (!title || title.length > 160 || /[\x00-\x1f\x7f]/.test(title)) {
+          return res.status(400).json({ error: 'Use a title between 1 and 160 characters.' })
+        }
+        const { slideCount } = await validatePptx(pptUpload.path)
+        const id = randomUUID()
+        const storedName = `${id}.pptx`
+        stagingPreviewPath = path.join(tempDir, `${id}-${randomUUID()}-previews`)
+        const preview = await validateAndExtractPreviewZip(previewUpload.path, {
+          expectedSlideCount: slideCount,
+          outputDir: stagingPreviewPath,
+        })
+        await writePreviewCacheKey(stagingPreviewPath)
+        finalPath = path.join(filesDir, storedName)
+        finalPreviewPath = previewDirectory(id)
+        await fs.rename(pptUpload.path, finalPath)
+        await fs.chmod(finalPath, 0o600)
+        const handle = await fs.open(finalPath, 'r+')
+        try {
+          const stat = await handle.stat()
+          if (stat.size !== pptUpload.size) throw new Error('The replacement presentation was not saved completely.')
+          await handle.sync()
+        } finally {
+          await handle.close()
+        }
+        await fs.rename(stagingPreviewPath, finalPreviewPath)
+        stagingPreviewPath = null
+        const metadata = { id, districtId: previous.districtId, title, originalName, storedName,
+          size: pptUpload.size, slideCount, uploadedAt: new Date().toISOString() }
+        const stagedStatus = await presentationAssetStatus(metadata)
+        if (!stagedStatus.available || stagedStatus.preview?.slideCount !== preview.slideCount) {
+          throw new Error('The replacement presentation and slide previews were not saved completely.')
+        }
+        let presentation
+        try {
+          presentation = await storage.replacePresentation(previous.id, metadata)
+          saved = true
+        } catch (error) {
+          if (storage.mode !== 'mysql') throw error
+          let observed
+          try {
+            observed = await storage.getPresentation(id)
+          } catch {
+            // Keep both complete versions if the database commit result cannot
+            // be checked. Recovery can safely reconnect either version.
+            retainFinalArtifacts = true
+            throw error
+          }
+          if (!samePresentation(observed, metadata)) throw error
+          presentation = observed
+          saved = true
+        }
+        const publishedStatus = await presentationAssetStatus(presentation)
+        if (!publishedStatus.available || publishedStatus.preview?.slideCount !== preview.slideCount) {
+          throw new Error('The replacement presentation did not become available.')
+        }
+        const previousPath = path.join(filesDir, previous.storedName)
+        if (previousPath !== finalPath) {
+          await fs.unlink(previousPath).catch((error) => {
+            if (error.code !== 'ENOENT') console.error('Previous presentation cleanup failed.')
+          })
+        }
+        if (previous.id !== id) {
+          await removePreviewDirectory(previous.id).catch(() => {
+            console.error('Previous slide preview cleanup failed.')
+          })
+        }
+        res.json({ presentation: publicPresentation(presentation, publishedStatus) })
+      } finally {
+        await Promise.all([pptUpload.path, previewUpload.path].map((temporaryPath) =>
+          fs.unlink(temporaryPath).catch((error) => { if (error.code !== 'ENOENT') console.error('Temporary replacement upload cleanup failed.') })))
         if (stagingPreviewPath) await fs.rm(stagingPreviewPath, { recursive: true, force: true }).catch(() => {})
         if (finalPath && !saved && !retainFinalArtifacts) await fs.unlink(finalPath).catch(() => {})
         if (finalPreviewPath && !saved && !retainFinalArtifacts) {

@@ -9,6 +9,8 @@ const MAX_XML_BYTES = 8 * 1024 * 1024
 const MAX_ENTRIES = 12000
 const parser = new XMLParser({ ignoreAttributes: false, processEntities: false })
 const fail = (message) => Object.assign(new Error(message), { status: 400 })
+const WEBSITE_TEXT_PART = /^ppt\/(?:slides\/slide\d+|slideLayouts\/slideLayout\d+|slideMasters\/slideMaster\d+)\.xml$/i
+const TAB_ALIGNED_TEXT = /<a:t\b[^>]*>[\s\S]*?(?:\t|&#(?:0*9|x0*9);)[\s\S]*?<\/a:t>/i
 
 function readEntry(zip, entry) {
   return new Promise((resolve, reject) => {
@@ -66,6 +68,9 @@ export async function validatePptx(filePath) {
             const text = await readEntry(zip, entry)
             if (/<!DOCTYPE|<!ENTITY/i.test(text) || XMLValidator.validate(text) !== true) {
               throw fail('The presentation contains invalid or unsupported XML.')
+            }
+            if (WEBSITE_TEXT_PART.test(name) && TAB_ALIGNED_TEXT.test(text)) {
+              throw fail('This presentation uses tab-aligned text that cannot render safely on the website. Replace tabs with fixed text columns or a table before uploading.')
             }
             if (/\.svg$/i.test(name) && /<\s*(?:script|foreignObject)|\son\w+\s*=|javascript\s*:|(?:href\s*=\s*["'](?:https?:|\/\/|data:text\/html))/i.test(text)) {
               throw fail('The presentation contains unsupported active image content.')
