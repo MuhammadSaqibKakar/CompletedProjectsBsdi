@@ -15,7 +15,7 @@ import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
 import { validateAndExtractPreviewZip, MAX_PREVIEW_ARCHIVE_BYTES } from './validate-previews.js'
 import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-08.2'
+export const release = 'district-portal-2026-09-08.3'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const notFound = (res) => res.status(404).json({ error: 'Presentation not found.' })
 const publicPresentation = (item, status) => ({
@@ -65,6 +65,14 @@ export async function createApp({
     return directory
   }
 
+  async function writePreviewCacheKey(directory) {
+    const cacheKey = randomUUID()
+    await fs.writeFile(path.join(directory, 'cache-key'), `${cacheKey}\n`, {
+      encoding: 'utf8', mode: 0o600, flag: 'wx',
+    })
+    return cacheKey
+  }
+
   async function originalFileAvailable(presentation) {
     const filePath = path.join(filesDir, presentation.storedName)
     const stat = await fs.lstat(filePath).catch((error) => {
@@ -87,9 +95,11 @@ export async function createApp({
     })
     if (!directoryStat?.isDirectory() || directoryStat.isSymbolicLink()) return { available: false, preview: null }
     const manifestPath = path.join(directory, 'manifest.json')
+    const cacheKeyPath = path.join(directory, 'cache-key')
     const slidesDir = path.join(directory, 'slides')
-    const [manifestStat, slidesStat] = await Promise.all([
+    const [manifestStat, cacheKeyStat, slidesStat] = await Promise.all([
       fs.lstat(manifestPath).catch(() => null),
+      fs.lstat(cacheKeyPath).catch(() => null),
       fs.lstat(slidesDir).catch(() => null),
     ])
     if (!manifestStat?.isFile() || manifestStat.isSymbolicLink() || manifestStat.size > 8192 ||
@@ -105,6 +115,14 @@ export async function createApp({
     if (keys !== 'format,height,slideCount,version,width' || manifest.version !== 1 || manifest.format !== 'jpg' ||
         manifest.slideCount !== Number(presentation.slideCount) || !Number.isSafeInteger(manifest.width) ||
         !Number.isSafeInteger(manifest.height)) return { available: false, preview: null }
+    let cacheKey = `legacy-${Math.trunc(manifestStat.mtimeMs).toString(36)}`
+    if (cacheKeyStat) {
+      if (!cacheKeyStat.isFile() || cacheKeyStat.isSymbolicLink() || cacheKeyStat.size > 64) {
+        return { available: false, preview: null }
+      }
+      cacheKey = (await fs.readFile(cacheKeyPath, 'utf8')).trim()
+      if (!UUID.test(cacheKey)) return { available: false, preview: null }
+    }
     const entries = await fs.readdir(slidesDir, { withFileTypes: true }).catch(() => [])
     if (entries.length !== manifest.slideCount) return { available: false, preview: null }
     const actual = new Set()
@@ -115,7 +133,7 @@ export async function createApp({
     for (let number = 1; number <= manifest.slideCount; number += 1) {
       if (!actual.has(`slide-${String(number).padStart(4, '0')}.jpg`)) return { available: false, preview: null }
     }
-    return { available: true, preview: manifest }
+    return { available: true, preview: { ...manifest, cacheKey } }
   }
 
   async function presentationAssetStatus(presentation) {
@@ -264,6 +282,14 @@ export async function createApp({
       callback(Object.assign(new Error('Choose one PowerPoint file and its generated preview ZIP.'), { status: 400 }))
     },
   })
+  const previewOnlyUpload = multer({
+    dest: tempDir,
+    limits: { fileSize: MAX_PREVIEW_ARCHIVE_BYTES, files: 1, fields: 1, parts: 2 },
+    fileFilter: (_req, file, callback) => {
+      if (file.fieldname === 'previews' && /\.zip$/i.test(file.originalname)) return callback(null, true)
+      callback(Object.assign(new Error('Choose the generated preview ZIP.'), { status: 400 }))
+    },
+  })
   // Authentication and CSRF checks run before multipart data reaches disk.
   app.post('/api/admin/districts/:id/presentations', requireOrigin, requireAdmin, requireCsrf,
     (req, res, next) => districtById.has(req.params.id) ? next() : res.status(404).json({ error: 'District not found.' }),
@@ -306,6 +332,7 @@ export async function createApp({
           expectedSlideCount: slideCount,
           outputDir: stagingPreviewPath,
         })
+        await writePreviewCacheKey(stagingPreviewPath)
         finalPath = path.join(filesDir, storedName)
         finalPreviewPath = previewDirectory(id)
         await fs.rename(pptUpload.path, finalPath)
@@ -369,6 +396,73 @@ export async function createApp({
         if (finalPreviewPath && !saved && !retainFinalArtifacts) {
           await removePreviewDirectory(path.basename(finalPreviewPath)).catch(() => {})
         }
+      }
+    })
+  app.post('/api/admin/presentations/:id/previews', requireOrigin, requireAdmin, requireCsrf,
+    (req, res, next) => UUID.test(req.params.id) ? next() : notFound(res),
+    previewOnlyUpload.single('previews'), async (req, res) => {
+      const previewUpload = req.file
+      if (!previewUpload) return res.status(400).json({ error: 'Wait for every slide preview to finish.' })
+      let stagingPreviewPath
+      let backupPreviewPath
+      let finalPreviewPath
+      let installed = false
+      try {
+        if (Object.keys(req.body).length > 0) {
+          return res.status(400).json({ error: 'Upload only the generated preview ZIP.' })
+        }
+        const presentation = await storage.getPresentation(req.params.id)
+        if (!presentation || !(await originalFileAvailable(presentation))) return notFound(res)
+        stagingPreviewPath = path.join(tempDir, `${presentation.id}-${randomUUID()}-previews`)
+        const preview = await validateAndExtractPreviewZip(previewUpload.path, {
+          expectedSlideCount: Number(presentation.slideCount),
+          outputDir: stagingPreviewPath,
+        })
+        await writePreviewCacheKey(stagingPreviewPath)
+        finalPreviewPath = previewDirectory(presentation.id)
+        const existingStat = await fs.lstat(finalPreviewPath).catch((error) => {
+          if (error.code === 'ENOENT') return null
+          throw error
+        })
+        if (existingStat) {
+          if (!existingStat.isDirectory() || existingStat.isSymbolicLink()) {
+            throw new Error('The existing slide preview storage is unsafe.')
+          }
+          backupPreviewPath = path.join(tempDir, `${presentation.id}-${randomUUID()}-preview-backup`)
+          await fs.rename(finalPreviewPath, backupPreviewPath)
+        }
+        await fs.rename(stagingPreviewPath, finalPreviewPath)
+        stagingPreviewPath = null
+        installed = true
+        const status = await presentationAssetStatus(presentation)
+        if (!status.available || status.preview?.slideCount !== preview.slideCount) {
+          throw new Error('The replacement slide previews were not saved completely.')
+        }
+        if (backupPreviewPath) {
+          await fs.rm(backupPreviewPath, { recursive: true, force: true })
+          backupPreviewPath = null
+        }
+        res.json({ presentation: publicPresentation(presentation, status) })
+      } catch (error) {
+        try {
+          if (installed && finalPreviewPath) {
+            await fs.rm(finalPreviewPath, { recursive: true, force: true })
+            installed = false
+          }
+          if (backupPreviewPath && finalPreviewPath) {
+            await fs.rename(backupPreviewPath, finalPreviewPath)
+            backupPreviewPath = null
+          }
+        } catch (rollbackError) {
+          console.error('Slide preview rollback failed.', rollbackError)
+          throw new Error('The previous slide previews could not be restored safely.', { cause: rollbackError })
+        }
+        throw error
+      } finally {
+        await fs.unlink(previewUpload.path).catch((error) => {
+          if (error.code !== 'ENOENT') console.error('Temporary preview upload cleanup failed.')
+        })
+        if (stagingPreviewPath) await fs.rm(stagingPreviewPath, { recursive: true, force: true }).catch(() => {})
       }
     })
   app.delete('/api/admin/presentations/:id', requireOrigin, requireAdmin, requireCsrf, async (req, res) => {

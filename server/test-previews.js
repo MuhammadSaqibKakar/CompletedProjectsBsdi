@@ -21,12 +21,13 @@ export async function testPreviews({
   manifest = {},
   omit = [],
   extra = null,
+  markerOffset = 0,
 } = {}) {
   const zip = new JSZip()
   zip.file('manifest.json', JSON.stringify({ version: 1, slideCount, width, height, format: 'jpg', ...manifest }))
   for (let number = 1; number <= slideCount; number += 1) {
     if (!omit.includes(number)) {
-      zip.file(`slides/slide-${String(number).padStart(4, '0')}.jpg`, testJpeg({ width, height, marker: number }))
+      zip.file(`slides/slide-${String(number).padStart(4, '0')}.jpg`, testJpeg({ width, height, marker: number + markerOffset }))
     }
   }
   if (extra) zip.file(extra.name, extra.bytes || Buffer.from('extra'))

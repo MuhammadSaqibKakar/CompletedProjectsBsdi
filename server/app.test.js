@@ -112,9 +112,12 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   assert.equal(item.storedName, undefined)
   assert.equal(item.fileUrl, undefined)
   assert.equal(item.downloadUrl, undefined)
-  assert.deepEqual(item.preview, {
+  const initialPreviewCacheKey = item.preview.cacheKey
+  assert.match(initialPreviewCacheKey, /^[a-f0-9-]{36}$/)
+  assert.deepEqual({ ...item.preview, cacheKey: undefined }, {
     version: 1, slideCount: 2, width: 1600, height: 900, format: 'jpg',
     baseUrl: `/api/presentations/${item.id}/previews`,
+    cacheKey: undefined,
   })
   const catalog = await request('/api/districts').then((res) => res.json())
   assert.equal(catalog.totalPresentations, 1)
@@ -144,6 +147,38 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   assert.equal(slide.headers.get('content-type'), 'image/jpeg')
   assert.equal(slide.headers.get('access-control-allow-origin'), '*')
   assert.deepEqual(Buffer.from(await slide.arrayBuffer()), testJpeg({ marker: 1 }))
+  assert.equal((await request(`/api/admin/presentations/${item.id}/previews`, {
+    method: 'POST', headers: { Origin: origin },
+  })).status, 401)
+  assert.equal((await request(`/api/admin/presentations/${item.id}/previews`, {
+    method: 'POST', headers: { Origin: origin, Cookie: cookie },
+  })).status, 403)
+  const invalidPreviewRepair = new FormData()
+  invalidPreviewRepair.set('previews', new Blob([await testPreviews({ slideCount: 1 })]), 'invalid.previews.zip')
+  const rejectedRepair = await request(`/api/admin/presentations/${item.id}/previews`, {
+    method: 'POST', headers: protectedHeaders, body: invalidPreviewRepair,
+  })
+  assert.equal(rejectedRepair.status, 400)
+  assert.deepEqual(
+    Buffer.from(await request(`${item.preview.baseUrl}/slide-0001.jpg`).then((response) => response.arrayBuffer())),
+    testJpeg({ marker: 1 }),
+  )
+  const [storedName] = await fs.readdir(path.join(dataDir, 'portal/files'))
+  const originalBeforeRepair = await fs.readFile(path.join(dataDir, 'portal/files', storedName))
+  const previewRepair = new FormData()
+  previewRepair.set('previews', new Blob([await testPreviews({ markerOffset: 100 })]), 'replacement.previews.zip')
+  const repairResponse = await request(`/api/admin/presentations/${item.id}/previews`, {
+    method: 'POST', headers: protectedHeaders, body: previewRepair,
+  })
+  const repaired = await repairResponse.json()
+  assert.equal(repairResponse.status, 200, JSON.stringify(repaired))
+  assert.notEqual(repaired.presentation.preview.cacheKey, initialPreviewCacheKey)
+  assert.deepEqual(
+    Buffer.from(await request(`${item.preview.baseUrl}/slide-0001.jpg?v=${repaired.presentation.preview.cacheKey}`).then((response) => response.arrayBuffer())),
+    testJpeg({ marker: 101 }),
+  )
+  assert.deepEqual(await fs.readFile(path.join(dataDir, 'portal/files', storedName)), originalBeforeRepair)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
   assert.equal((await request(`/api/presentations/${item.id}/file`)).status, 404)
   assert.equal((await request(`/api/presentations/${item.id}/download`)).status, 404)
   assert.equal((await request(`/api/admin/presentations/${item.id}/download`)).status, 401)

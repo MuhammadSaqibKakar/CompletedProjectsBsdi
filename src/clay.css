@@ -1406,6 +1406,42 @@ body {
   font-weight: 680;
 }
 
+.managed-preview-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 9px 0 0 12px;
+  padding: 0;
+  color: var(--green);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.managed-preview-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.managed-preview-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 10px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.managed-preview-progress progress {
+  width: 100%;
+  height: 5px;
+  grid-column: 1 / -1;
+  accent-color: var(--green);
+}
+
 .managed-file-status {
   margin-top: 8px;
   color: #8a2f2a !important;

@@ -94,6 +94,7 @@ export default function PresentationViewer() {
         preview?.slideCount !== file.slideCount ||
         !Number.isSafeInteger(preview.width) ||
         !Number.isSafeInteger(preview.height) ||
+        typeof preview.cacheKey !== "string" ||
         typeof preview.baseUrl !== "string"
       ) {
         const error = new Error(
@@ -127,7 +128,7 @@ export default function PresentationViewer() {
   const slideUrl = useCallback(
     (index) =>
       presentation
-        ? `${presentation.preview.baseUrl}/${slideName(index)}`
+        ? `${presentation.preview.baseUrl}/${slideName(index)}?v=${encodeURIComponent(presentation.preview.cacheKey)}`
         : "",
     [presentation],
   );

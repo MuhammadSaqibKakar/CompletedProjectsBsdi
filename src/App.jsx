@@ -15,6 +15,7 @@ import {
   LogOut,
   MapPin,
   Menu,
+  RefreshCw,
   Search,
   ShieldCheck,
   Trash2,
@@ -694,6 +695,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
   const [error, setError] = useState("");
   const [deleteItem, setDeleteItem] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [rebuildingId, setRebuildingId] = useState("");
   const [dragging, setDragging] = useState(false);
   const uploadRef = useRef(null);
   const preparationRef = useRef(null);
@@ -836,6 +838,96 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
       failure(error);
     } finally {
       setDeleting(false);
+    }
+  }
+  async function rebuildPreviews(item) {
+    if (!item?.id || !item.originalAvailable || busy || deleting) return;
+    setBusy(true);
+    setRebuildingId(item.id);
+    setProgress(0);
+    setProgressLabel("Opening stored PowerPoint…");
+    setError("");
+    setMessage("");
+    const controller = new AbortController();
+    preparationRef.current = controller;
+    try {
+      const response = await fetch(
+        `/api/admin/presentations/${item.id}/download`,
+        {
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw Object.assign(
+          new Error(data.error || "The stored PowerPoint could not be opened."),
+          { status: response.status },
+        );
+      }
+      const source = new File([await response.blob()], item.originalName, {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      });
+      const prepared = await preparePresentationPreviews(source, {
+        signal: controller.signal,
+        onProgress: ({ label, value }) => {
+          setProgressLabel(label);
+          setProgress(Number.isFinite(value) ? value : 0);
+        },
+      });
+      const form = new FormData();
+      form.append("previews", prepared.archive);
+      setProgress(0);
+      setProgressLabel("Uploading replacement previews…");
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        uploadRef.current = xhr;
+        xhr.open("POST", `/api/admin/presentations/${item.id}/previews`);
+        xhr.withCredentials = true;
+        xhr.setRequestHeader("X-CSRF-Token", session.csrfToken);
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable)
+            setProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        xhr.onload = () => {
+          let data = {};
+          try {
+            data = JSON.parse(xhr.responseText);
+          } catch {
+            /* The server may return a hosting error page. */
+          }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else
+            reject(
+              Object.assign(
+                new Error(
+                  data.error || "The slide previews could not be replaced.",
+                ),
+                { status: xhr.status },
+              ),
+            );
+        };
+        xhr.onerror = () =>
+          reject(
+            new Error("The connection was interrupted. Please try again."),
+          );
+        xhr.onabort = () => reject(new Error("Preview rebuild cancelled."));
+        xhr.send(form);
+      });
+      setProgress(100);
+      setProgressLabel("Preview repair complete.");
+      setMessage(
+        "Slide previews rebuilt. The stored PowerPoint was not changed.",
+      );
+      refresh();
+    } catch (error) {
+      failure(error);
+    } finally {
+      setBusy(false);
+      setRebuildingId("");
+      preparationRef.current = null;
+      uploadRef.current = null;
     }
   }
   return (
@@ -1089,6 +1181,30 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
                       <a href={`/api/admin/presentations/${item.id}/download`} download>
                         Download PPTX <ArrowDownToLine size={13} />
                       </a>
+                    )}
+                    {item.originalAvailable && (
+                      <button
+                        type="button"
+                        className="managed-preview-button"
+                        disabled={busy || deleting}
+                        onClick={() => rebuildPreviews(item)}
+                      >
+                        {rebuildingId === item.id ? (
+                          <LoaderCircle size={13} className="spin" />
+                        ) : (
+                          <RefreshCw size={13} />
+                        )}
+                        {rebuildingId === item.id
+                          ? "Rebuilding previews…"
+                          : "Rebuild previews"}
+                      </button>
+                    )}
+                    {rebuildingId === item.id && (
+                      <div className="managed-preview-progress" role="status">
+                        <span>{progressLabel}</span>
+                        <strong>{progress}%</strong>
+                        <progress max="100" value={progress} />
+                      </div>
                     )}
                     {!item.previewAvailable && (
                       <strong className="managed-file-status">
