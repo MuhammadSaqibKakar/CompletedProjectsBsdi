@@ -68,6 +68,25 @@ async function inlineSvgImageFills(root, signal) {
   );
 }
 
+function hideStaticCaptureScrollbars(root) {
+  root.setAttribute("data-static-slide-capture", "");
+  const style = document.createElement("style");
+  style.textContent = `
+    [data-static-slide-capture],
+    [data-static-slide-capture] * {
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+    [data-static-slide-capture]::-webkit-scrollbar,
+    [data-static-slide-capture] *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+  `;
+  root.appendChild(style);
+}
+
 async function dataUrlBytes(dataUrl) {
   const response = await fetch(dataUrl);
   if (!response.ok) throw new Error("A slide preview could not be encoded.");
@@ -191,6 +210,7 @@ export async function preparePresentationPreviews(
       try {
         await handle.ready;
         await inlineSvgImageFills(handle.element, signal);
+        hideStaticCaptureScrollbars(handle.element);
         await waitForImages(handle.element, signal);
         await nextFrame();
         checkAbort(signal);
