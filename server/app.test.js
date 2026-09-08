@@ -9,12 +9,21 @@ import test from 'node:test'
 import { createPortalStorage } from './portal-storage.js'
 import { createApp, release } from './app.js'
 import { testPresentation } from './test-pptx.js'
+import { testPreviews, testJpeg } from './test-previews.js'
 import { hashToken, verifyPassword } from './auth.js'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const testPassword = 'fixture-password-only'
 const salt = randomBytes(32).toString('hex')
 const verifier = `scrypt$${salt}$${scryptSync(testPassword, salt, 64, { N: 32768, r: 8, p: 1, maxmem: 67108864 }).toString('hex')}`
+
+async function presentationForm(buffer, name = 'District report.pptx', title) {
+  const form = new FormData()
+  form.set('file', new Blob([buffer]), name)
+  form.set('previews', new Blob([await testPreviews()]), `${name}.previews.zip`)
+  if (title) form.set('title', title)
+  return form
+}
 
 async function fixture(t, { production = false, decorateStorage } = {}) {
   const dataDir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'completed-portal-api-')))
@@ -64,10 +73,16 @@ test('public district catalog uses exactly the supplied names and starts empty',
     presentations: 0,
     availablePresentations: 0,
     missingFiles: 0,
+    missingOriginalFiles: 0,
+    missingPreviews: 0,
+    unavailablePresentations: 0,
   })
-  const page = await request('/').then((response) => response.text())
+  const pageResponse = await request('/')
+  assert.match(pageResponse.headers.get('content-security-policy'), /connect-src 'self' blob: data:/)
+  const page = await pageResponse.text()
   assert.match(page, /http-equiv="Content-Security-Policy"/)
   assert.match(page, /script-src 'self'/)
+  assert.match(page, /connect-src 'self' blob: data:/)
 })
 
 test('authenticated upload, isolated preview, exact download, persistence and deletion', async (t) => {
@@ -86,9 +101,7 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   const missingCsrf = await request('/api/admin/districts/aw aran/presentations', { method: 'POST', headers: { Origin: origin, Cookie: cookie } })
   assert.equal(missingCsrf.status, 403)
   const buffer = await testPresentation()
-  const form = new FormData()
-  form.set('file', new Blob([buffer]), 'District report.pptx')
-  form.set('title', 'District report')
+  const form = await presentationForm(buffer, 'District report.pptx', 'District report')
   const upload = await request('/api/admin/districts/aw aran/presentations'.replace('aw aran', 'awaran'), { method: 'POST', headers: protectedHeaders, body: form })
   const uploaded = await upload.json()
   assert.equal(upload.status, 201, JSON.stringify(uploaded))
@@ -97,6 +110,12 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   assert.equal(item.title, 'District report')
   assert.equal(item.available, true)
   assert.equal(item.storedName, undefined)
+  assert.equal(item.fileUrl, undefined)
+  assert.equal(item.downloadUrl, undefined)
+  assert.deepEqual(item.preview, {
+    version: 1, slideCount: 2, width: 1600, height: 900, format: 'jpg',
+    baseUrl: `/api/presentations/${item.id}/previews`,
+  })
   const catalog = await request('/api/districts').then((res) => res.json())
   assert.equal(catalog.totalPresentations, 1)
   assert.equal(catalog.districts.find((district) => district.id === 'awaran').presentationCount, 1)
@@ -107,21 +126,31 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   assert.match((await duplicateUpload.json()).error, /already has a presentation/)
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
   assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
   const preview = await request(item.viewUrl)
   assert.equal(preview.status, 200)
-  assert.match(preview.headers.get('content-security-policy'), /sandbox allow-scripts allow-downloads/)
+  assert.match(preview.headers.get('content-security-policy'), /sandbox allow-scripts/)
+  assert.doesNotMatch(preview.headers.get('content-security-policy'), /allow-downloads/)
   assert.doesNotMatch(preview.headers.get('content-security-policy'), /allow-same-origin/)
   const previewHtml = await preview.text()
-  assert.match(previewHtml, /<iframe[^>]+sandbox="allow-scripts allow-downloads"/)
+  assert.match(previewHtml, /<iframe[^>]+sandbox="allow-scripts"/)
+  assert.doesNotMatch(previewHtml, /allow-downloads/)
   assert.match(previewHtml, /srcdoc="/)
   assert.match(previewHtml, /http-equiv="Content-Security-Policy"/)
   assert.doesNotMatch(previewHtml, /allow-same-origin/)
   assert.match(previewHtml, /name=&quot;presentation-id&quot;/)
-  const download = await request(item.downloadUrl)
+  const slide = await request(`${item.preview.baseUrl}/slide-0001.jpg`)
+  assert.equal(slide.status, 200)
+  assert.equal(slide.headers.get('content-type'), 'image/jpeg')
+  assert.equal(slide.headers.get('access-control-allow-origin'), '*')
+  assert.deepEqual(Buffer.from(await slide.arrayBuffer()), testJpeg({ marker: 1 }))
+  assert.equal((await request(`/api/presentations/${item.id}/file`)).status, 404)
+  assert.equal((await request(`/api/presentations/${item.id}/download`)).status, 404)
+  assert.equal((await request(`/api/admin/presentations/${item.id}/download`)).status, 401)
+  const download = await request(`/api/admin/presentations/${item.id}/download`, { headers: { Cookie: cookie } })
   assert.equal(download.status, 200)
   assert.match(download.headers.get('content-disposition'), /attachment/)
   assert.deepEqual(Buffer.from(await download.arrayBuffer()), buffer)
-  assert.equal((await request(item.fileUrl)).headers.get('access-control-allow-origin'), '*')
   const restarted = createPortalStorage({ dataDir, env: {} })
   await restarted.initialize()
   assert.equal((await restarted.listPresentations()).length, 1)
@@ -131,7 +160,9 @@ test('authenticated upload, isolated preview, exact download, persistence and de
   const remove = await request(`/api/admin/presentations/${item.id}`, { method: 'DELETE', headers: protectedHeaders })
   assert.equal(remove.status, 200)
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/files')), [])
-  assert.equal((await request(item.downloadUrl)).status, 404)
+  assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/previews')), [])
+  assert.equal((await request(`/api/admin/presentations/${item.id}/download`, { headers: { Cookie: cookie } })).status, 404)
+  assert.equal((await request(`${item.preview.baseUrl}/slide-0001.jpg`)).status, 404)
   assert.equal((await request(item.viewUrl)).status, 404)
   const logout = await request('/api/admin/logout', { method: 'POST', headers: protectedHeaders })
   assert.equal(logout.status, 200)
@@ -144,8 +175,7 @@ test('reports and atomically repairs an orphaned database record when its PowerP
   const cookie = signedIn.headers.get('set-cookie').split(';')[0]
   const { csrfToken } = await signedIn.json()
   const protectedHeaders = { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }
-  const form = new FormData()
-  form.set('file', new Blob([await testPresentation()]), 'District report.pptx')
+  const form = await presentationForm(await testPresentation())
   const upload = await request('/api/admin/districts/awaran/presentations', {
     method: 'POST', headers: protectedHeaders, body: form,
   })
@@ -170,11 +200,15 @@ test('reports and atomically repairs an orphaned database record when its PowerP
   assert.equal(health.presentations, 1)
   assert.equal(health.availablePresentations, 0)
   assert.equal(health.missingFiles, 1)
-  assert.equal((await request(item.fileUrl)).status, 404)
-  assert.equal((await request(item.downloadUrl)).status, 404)
+  assert.equal(health.missingOriginalFiles, 1)
+  assert.equal(health.missingPreviews, 0)
+  assert.equal(health.unavailablePresentations, 1)
+  assert.equal((await request(`/api/presentations/${item.id}/file`)).status, 404)
+  assert.equal((await request(`/api/presentations/${item.id}/download`)).status, 404)
 
   const invalidRepairForm = new FormData()
   invalidRepairForm.set('file', new Blob([Buffer.from('not a presentation')]), 'Invalid repair.pptx')
+  invalidRepairForm.set('previews', new Blob([await testPreviews()]), 'Invalid repair.previews.zip')
   const invalidRepair = await request('/api/admin/districts/awaran/presentations', {
     method: 'POST', headers: protectedHeaders, body: invalidRepairForm,
   })
@@ -184,9 +218,7 @@ test('reports and atomically repairs an orphaned database record when its PowerP
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
 
   const replacementBuffer = await testPresentation()
-  const replacementForm = new FormData()
-  replacementForm.set('file', new Blob([replacementBuffer]), 'Repaired district report.pptx')
-  replacementForm.set('title', 'Repaired district report')
+  const replacementForm = await presentationForm(replacementBuffer, 'Repaired district report.pptx', 'Repaired district report')
   const repair = await request('/api/admin/districts/awaran/presentations', {
     method: 'POST', headers: protectedHeaders, body: replacementForm,
   })
@@ -195,8 +227,8 @@ test('reports and atomically repairs an orphaned database record when its PowerP
   assert.notEqual(repaired.presentation.id, item.id)
   assert.equal(repaired.presentation.title, 'Repaired district report')
   assert.equal(repaired.presentation.available, true)
-  assert.equal((await request(item.downloadUrl)).status, 404)
-  const repairedDownload = await request(repaired.presentation.downloadUrl)
+  assert.equal((await request(`/api/admin/presentations/${item.id}/download`, { headers: { Cookie: cookie } })).status, 404)
+  const repairedDownload = await request(`/api/admin/presentations/${repaired.presentation.id}/download`, { headers: { Cookie: cookie } })
   assert.equal(repairedDownload.status, 200)
   assert.deepEqual(Buffer.from(await repairedDownload.arrayBuffer()), replacementBuffer)
   assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
@@ -211,6 +243,7 @@ test('reports and atomically repairs an orphaned database record when its PowerP
   assert.equal(repairedHealth.presentations, 1)
   assert.equal(repairedHealth.availablePresentations, 1)
   assert.equal(repairedHealth.missingFiles, 0)
+  assert.equal(repairedHealth.missingPreviews, 0)
 
   const occupiedForm = new FormData()
   occupiedForm.set('file', new Blob([replacementBuffer]), 'Should not replace healthy report.pptx')
@@ -241,6 +274,7 @@ test('rejects disguised files, active content and externally linked decks withou
   ]) {
     const form = new FormData()
     form.set('file', new Blob([buffer]), name)
+    form.set('previews', new Blob([await testPreviews()]), `${name}.previews.zip`)
     const response = await request('/api/admin/districts/barkhan/presentations', {
       method: 'POST', headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }, body: form,
     })
@@ -272,8 +306,7 @@ test('keeps a presentation when MySQL commits but its acknowledgement is lost', 
   const { csrfToken } = await signedIn.json()
   const headers = { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }
   const buffer = await testPresentation()
-  const firstForm = new FormData()
-  firstForm.set('file', new Blob([buffer]), 'Initial report.pptx')
+  const firstForm = await presentationForm(buffer, 'Initial report.pptx')
   const firstResponse = await request('/api/admin/districts/barkhan/presentations', {
     method: 'POST', headers, body: firstForm,
   })
@@ -282,16 +315,16 @@ test('keeps a presentation when MySQL commits but its acknowledgement is lost', 
   const [firstStoredName] = await fs.readdir(path.join(dataDir, 'portal/files'))
   await fs.unlink(path.join(dataDir, 'portal/files', firstStoredName))
 
-  const replacementForm = new FormData()
-  replacementForm.set('file', new Blob([buffer]), 'Recovered report.pptx')
+  const replacementForm = await presentationForm(buffer, 'Recovered report.pptx')
   const replacementResponse = await request('/api/admin/districts/barkhan/presentations', {
     method: 'POST', headers, body: replacementForm,
   })
   const replacement = await replacementResponse.json()
   assert.equal(replacementResponse.status, 201, JSON.stringify(replacement))
   assert.notEqual(replacement.presentation.id, first.presentation.id)
-  assert.equal((await request(replacement.presentation.downloadUrl)).status, 200)
+  assert.equal((await request(`/api/admin/presentations/${replacement.presentation.id}/download`, { headers: { Cookie: cookie } })).status, 200)
   assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
 })
 
@@ -309,8 +342,7 @@ test('retains a durable file while a MySQL commit outcome cannot be checked', as
   const signedIn = await login()
   const cookie = signedIn.headers.get('set-cookie').split(';')[0]
   const { csrfToken } = await signedIn.json()
-  const form = new FormData()
-  form.set('file', new Blob([await testPresentation()]), 'Uncertain report.pptx')
+  const form = await presentationForm(await testPresentation(), 'Uncertain report.pptx')
   const response = await request('/api/admin/districts/barkhan/presentations', {
     method: 'POST',
     headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken },
@@ -318,6 +350,7 @@ test('retains a durable file while a MySQL commit outcome cannot be checked', as
   })
   assert.equal(response.status, 503)
   assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
 })
 

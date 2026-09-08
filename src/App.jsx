@@ -20,6 +20,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { preparePresentationPreviews } from "./prepare-presentation-previews.js";
 
 function navigate(to) {
   window.history.pushState({}, "", to);
@@ -509,7 +510,7 @@ function DistrictPage({ id }) {
         <div className="empty-state district-empty missing-presentation enter">
           <FileSliders size={42} strokeWidth={1.5} />
           <h2>Presentation needs to be uploaded again</h2>
-          <p>The saved PowerPoint file is currently unavailable.</p>
+          <p>The presentation preview is currently unavailable. An administrator needs to publish it again.</p>
           <Link to="/#districts" className="button secondary">
             Explore districts <ArrowRight size={18} />
           </Link>
@@ -520,7 +521,7 @@ function DistrictPage({ id }) {
           className="slide-frame district-full-viewer"
           src={selected.viewUrl}
           title={`${districtName} presentation viewer`}
-          sandbox="allow-scripts allow-downloads"
+          sandbox="allow-scripts"
           allowFullScreen
         />
       ) : (
@@ -688,14 +689,22 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("Preparing upload…");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [deleteItem, setDeleteItem] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const uploadRef = useRef(null);
+  const preparationRef = useRef(null);
   const fileRef = useRef(null);
-  useEffect(() => () => uploadRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      preparationRef.current?.abort();
+      uploadRef.current?.abort();
+    },
+    [],
+  );
   const csrfHeaders = { "X-CSRF-Token": session.csrfToken };
   function refresh() {
     setRevision((value) => value + 1);
@@ -709,6 +718,8 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
     if (uploadUnavailable) return;
     setError("");
     setMessage("");
+    setProgress(0);
+    setProgressLabel("Preparing upload…");
     if (!files?.length) return;
     if (files.length !== 1 || !/\.pptx$/i.test(files[0].name)) {
       setError(
@@ -735,12 +746,25 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
     if (!file || !districtId || busy || uploadUnavailable) return;
     setBusy(true);
     setProgress(0);
+    setProgressLabel("Loading preview tools…");
     setError("");
     setMessage("");
-    const form = new FormData();
-    form.append("file", file);
-    if (title.trim()) form.append("title", title.trim());
+    const controller = new AbortController();
+    preparationRef.current = controller;
     try {
+      const prepared = await preparePresentationPreviews(file, {
+        signal: controller.signal,
+        onProgress: ({ label, value }) => {
+          setProgressLabel(label);
+          setProgress(Number.isFinite(value) ? value : 0);
+        },
+      });
+      const form = new FormData();
+      form.append("file", file);
+      form.append("previews", prepared.archive);
+      if (title.trim()) form.append("title", title.trim());
+      setProgress(0);
+      setProgressLabel("Uploading presentation and previews…");
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         uploadRef.current = xhr;
@@ -752,6 +776,8 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
             setProgress(Math.round((event.loaded / event.total) * 100));
         };
         xhr.onload = () => {
+          setProgress(100);
+          setProgressLabel("Checking and publishing…");
           let data = {};
           try {
             data = JSON.parse(xhr.responseText);
@@ -781,13 +807,14 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
       setTitle("");
       if (fileRef.current) fileRef.current.value = "";
       setMessage(
-        "Presentation published. It is now available to view and download.",
+        "Presentation published. Visitors can view the fast slide preview; the PowerPoint download is available only here to administrators.",
       );
       refresh();
     } catch (error) {
       failure(error);
     } finally {
       setBusy(false);
+      preparationRef.current = null;
       uploadRef.current = null;
     }
   }
@@ -912,7 +939,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
               {missingPresentation && (
                 <div className="notice error" role="alert">
                   <FileSliders size={18} />
-                  <span>The stored file is missing. Upload the PowerPoint again to repair it.</span>
+                  <span>The PowerPoint or its slide previews are incomplete. Upload it again to repair both.</span>
                 </div>
               )}
               <label
@@ -987,9 +1014,7 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
                 <div className="upload-progress" role="status">
                   <div>
                     <span>
-                      {progress === 100
-                        ? "Checking and publishing…"
-                        : "Uploading presentation…"}
+                      {progressLabel}
                     </span>
                     <strong>{progress}%</strong>
                   </div>
@@ -1013,8 +1038,8 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
                 )}
               </button>
               <p className="upload-help">
-                Use a self-contained .pptx with embedded images. Save older .ppt
-                files as .pptx before uploading.
+                Use a compressed, self-contained .pptx with embedded images. This
+                browser prepares fast public slide previews before the upload.
               </p>
             </form>
           )}
@@ -1055,14 +1080,20 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
                       {item.slideCount} slides · {size(item.size)}
                     </span>
                     <small>Added {date(item.uploadedAt)}</small>
-                    {item.available === false ? (
+                    {!item.originalAvailable && (
                       <strong className="managed-file-status">
-                        File missing — upload again
+                        PowerPoint missing — upload again
                       </strong>
-                    ) : (
-                      <a href={item.downloadUrl} download>
-                        Download original <ArrowDownToLine size={13} />
+                    )}
+                    {item.originalAvailable && (
+                      <a href={`/api/admin/presentations/${item.id}/download`} download>
+                        Download PPTX <ArrowDownToLine size={13} />
                       </a>
+                    )}
+                    {!item.previewAvailable && (
+                      <strong className="managed-file-status">
+                        Slide preview missing — upload again
+                      </strong>
                     )}
                   </div>
                   <button
@@ -1088,8 +1119,8 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
             </div>
           )}
           <div className="managed-note">
-            <CircleCheck size={16} /> Published presentations can be viewed and
-            downloaded by everyone.
+            <CircleCheck size={16} /> Visitors can view slide previews. Only a
+            signed-in administrator can download the PowerPoint file.
           </div>
         </section>
       </div>
