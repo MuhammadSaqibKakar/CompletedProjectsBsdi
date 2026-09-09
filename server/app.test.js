@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { randomBytes, scryptSync } from 'node:crypto'
+import { createHash, randomBytes, scryptSync } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { createPortalStorage } from './portal-storage.js'
@@ -23,6 +23,39 @@ async function presentationForm(buffer, name = 'District report.pptx', title) {
   form.set('previews', new Blob([await testPreviews()]), `${name}.previews.zip`)
   if (title) form.set('title', title)
   return form
+}
+
+function sha256(buffer) {
+  return createHash('sha256').update(buffer).digest('hex')
+}
+
+function replacementSessionBody(presentation, previews, {
+  title = 'Duki corrected',
+  presentationName = 'Duki corrected.pptx',
+  previewName = 'Duki corrected.previews.zip',
+  presentationSha256 = sha256(presentation),
+  previewSha256 = sha256(previews),
+} = {}) {
+  return {
+    title,
+    assets: {
+      presentation: { name: presentationName, size: presentation.length, sha256: presentationSha256 },
+      previews: { name: previewName, size: previews.length, sha256: previewSha256 },
+    },
+  }
+}
+
+async function uploadReplacementAsset({ request, headers, sessionId, asset, buffer, chunkSize }) {
+  const responses = []
+  for (let index = 0, offset = 0; offset < buffer.length; index += 1, offset += chunkSize) {
+    const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, buffer.length))
+    responses.push(await request(`/api/admin/presentation-replacement-sessions/${sessionId}/assets/${asset}/chunks/${index}`, {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256(chunk) },
+      body: chunk,
+    }))
+  }
+  return responses
 }
 
 async function fixture(t, { production = false, decorateStorage } = {}) {
@@ -250,6 +283,219 @@ test('atomically replaces a presentation and its matching previews', async (t) =
   assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
   assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'portal/tmp')), [])
+})
+
+test('uploads a presentation replacement in resumable chunks and finalizes it atomically', async (t) => {
+  const { request, login, origin, dataDir } = await fixture(t)
+  const signedIn = await login()
+  const cookie = signedIn.headers.get('set-cookie').split(';')[0]
+  const { csrfToken } = await signedIn.json()
+  const headers = { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }
+  const initialBuffer = await testPresentation({ title: 'Initial chunked version' })
+  const initialResponse = await request('/api/admin/districts/duki/presentations', {
+    method: 'POST', headers, body: await presentationForm(initialBuffer, 'Duki initial.pptx', 'Duki'),
+  })
+  const initial = (await initialResponse.json()).presentation
+  assert.equal(initialResponse.status, 201)
+
+  const replacementBuffer = await testPresentation({
+    title: 'Corrected chunked version',
+    paddingBytes: 2 * 1024 * 1024 + 17,
+  })
+  const replacementPreviews = await testPreviews({ markerOffset: 300 })
+  const manifest = replacementSessionBody(replacementBuffer, replacementPreviews)
+  const startRoute = `/api/admin/presentations/${initial.id}/replacement-sessions`
+  assert.equal((await request(startRoute, {
+    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(manifest),
+  })).status, 401)
+  assert.equal((await request(startRoute, {
+    method: 'POST', headers: { Origin: origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(manifest),
+  })).status, 403)
+  assert.equal((await request(startRoute, {
+    method: 'POST', headers: { ...headers, Origin: 'https://example.invalid', 'Content-Type': 'application/json' }, body: JSON.stringify(manifest),
+  })).status, 403)
+
+  const startResponse = await request(startRoute, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(manifest),
+  })
+  const started = await startResponse.json()
+  assert.equal(startResponse.status, 201, JSON.stringify(started))
+  assert.match(started.sessionId, /^[a-f0-9-]{36}$/)
+  const sessionDirectory = path.join(dataDir, 'portal', 'tmp', `replacement-${started.sessionId}`)
+  assert.ok(Number.isSafeInteger(started.chunkSize) && started.chunkSize > 0)
+  assert.ok(started.assets.presentation.chunkCount > 1)
+  assert.equal(started.assets.presentation.chunkCount, Math.ceil(replacementBuffer.length / started.chunkSize))
+  assert.equal(started.assets.previews.chunkCount, Math.ceil(replacementPreviews.length / started.chunkSize))
+
+  const firstPresentationChunk = replacementBuffer.subarray(0, Math.min(started.chunkSize, replacementBuffer.length))
+  const firstChunkRoute = `/api/admin/presentation-replacement-sessions/${started.sessionId}/assets/presentation/chunks/0`
+  assert.equal((await request(firstChunkRoute, {
+    method: 'PUT', headers: { Origin: origin, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256(firstPresentationChunk) }, body: firstPresentationChunk,
+  })).status, 401)
+  assert.equal((await request(firstChunkRoute, {
+    method: 'PUT', headers: { Origin: origin, Cookie: cookie, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256(firstPresentationChunk) }, body: firstPresentationChunk,
+  })).status, 403)
+
+  const presentationResponses = await uploadReplacementAsset({
+    request, headers, sessionId: started.sessionId, asset: 'presentation', buffer: replacementBuffer, chunkSize: started.chunkSize,
+  })
+  for (const response of presentationResponses) {
+    const result = await response.json()
+    assert.equal(response.status, 200, JSON.stringify(result))
+    assert.deepEqual(result, { received: true, duplicate: false })
+  }
+  const duplicateResponse = await request(firstChunkRoute, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256(firstPresentationChunk) },
+    body: firstPresentationChunk,
+  })
+  assert.equal(duplicateResponse.status, 200)
+  assert.deepEqual(await duplicateResponse.json(), { received: true, duplicate: true })
+
+  const previewResponses = await uploadReplacementAsset({
+    request, headers, sessionId: started.sessionId, asset: 'previews', buffer: replacementPreviews, chunkSize: started.chunkSize,
+  })
+  for (const response of previewResponses) {
+    const result = await response.json()
+    assert.equal(response.status, 200, JSON.stringify(result))
+    assert.deepEqual(result, { received: true, duplicate: false })
+  }
+
+  const finalizeRoute = `/api/admin/presentation-replacement-sessions/${started.sessionId}/finalize`
+  assert.equal((await request(finalizeRoute, { method: 'POST', headers: { Origin: origin } })).status, 401)
+  assert.equal((await request(finalizeRoute, { method: 'POST', headers: { Origin: origin, Cookie: cookie } })).status, 403)
+  const lockPath = path.join(sessionDirectory, 'finalize.lock')
+  await fs.writeFile(lockPath, 'another-finalizer\n')
+  await fs.utimes(lockPath, new Date(0), new Date(0))
+  assert.equal((await request(finalizeRoute, { method: 'POST', headers })).status, 409)
+  assert.equal((await request(`/api/presentations/${initial.id}`)).status, 200)
+  await fs.rm(lockPath)
+  const finalizeResponse = await request(finalizeRoute, { method: 'POST', headers })
+  const finalized = await finalizeResponse.json()
+  assert.equal(finalizeResponse.status, 200, JSON.stringify(finalized))
+  const replaced = finalized.presentation
+  assert.notEqual(replaced.id, initial.id)
+  assert.equal(replaced.districtId, 'duki')
+  assert.equal(replaced.title, 'Duki corrected')
+  assert.equal(replaced.originalName, 'Duki corrected.pptx')
+  assert.equal(replaced.available, true)
+  assert.equal((await request(`/api/presentations/${initial.id}`)).status, 404)
+  assert.equal((await request(`${initial.preview.baseUrl}/slide-0001.jpg`)).status, 404)
+  const newSlide = await request(`${replaced.preview.baseUrl}/slide-0001.jpg?v=${replaced.preview.cacheKey}`)
+  assert.deepEqual(Buffer.from(await newSlide.arrayBuffer()), testJpeg({ marker: 301 }))
+
+  await fs.rm(path.join(sessionDirectory, 'result.json'))
+  const recoveredResponse = await request(finalizeRoute, { method: 'POST', headers })
+  const recovered = await recoveredResponse.json()
+  assert.equal(recoveredResponse.status, 200, JSON.stringify(recovered))
+  assert.equal(recovered.presentation.id, replaced.id)
+  assert.equal(recovered.presentation.available, true)
+
+  const download = await request(`/api/admin/presentations/${replaced.id}/download`, { headers: { Cookie: cookie } })
+  assert.deepEqual(Buffer.from(await download.arrayBuffer()), replacementBuffer)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+  assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
+})
+
+test('rejects incomplete, corrupt and conflicting replacement chunks without touching the live version', async (t) => {
+  const { request, login, origin, dataDir } = await fixture(t)
+  const signedIn = await login()
+  const cookie = signedIn.headers.get('set-cookie').split(';')[0]
+  const { csrfToken } = await signedIn.json()
+  const headers = { Origin: origin, Cookie: cookie, 'X-CSRF-Token': csrfToken }
+  const initialBuffer = await testPresentation({ title: 'Protected live version' })
+  const initialResponse = await request('/api/admin/districts/duki/presentations', {
+    method: 'POST', headers, body: await presentationForm(initialBuffer, 'Duki live.pptx', 'Duki'),
+  })
+  const initial = (await initialResponse.json()).presentation
+  assert.equal(initialResponse.status, 201)
+  const assertLiveVersionIntact = async () => {
+    assert.equal((await request(`/api/presentations/${initial.id}`)).status, 200)
+    const download = await request(`/api/admin/presentations/${initial.id}/download`, { headers: { Cookie: cookie } })
+    assert.equal(download.status, 200)
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), initialBuffer)
+    const slide = await request(`${initial.preview.baseUrl}/slide-0001.jpg?v=${initial.preview.cacheKey}`)
+    assert.equal(slide.status, 200)
+    assert.deepEqual(Buffer.from(await slide.arrayBuffer()), testJpeg({ marker: 1 }))
+    assert.equal((await fs.readdir(path.join(dataDir, 'portal/files'))).length, 1)
+    assert.equal((await fs.readdir(path.join(dataDir, 'portal/previews'))).length, 1)
+  }
+
+  const replacementBuffer = await testPresentation({ title: 'Candidate version' })
+  const replacementPreviews = await testPreviews({ markerOffset: 400 })
+  const createSession = async (body = replacementSessionBody(replacementBuffer, replacementPreviews)) => {
+    const response = await request(`/api/admin/presentations/${initial.id}/replacement-sessions`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const result = await response.json()
+    assert.equal(response.status, 201, JSON.stringify(result))
+    return result
+  }
+
+  const incomplete = await createSession()
+  const incompletePresentationResponses = await uploadReplacementAsset({
+    request, headers, sessionId: incomplete.sessionId, asset: 'presentation', buffer: replacementBuffer, chunkSize: incomplete.chunkSize,
+  })
+  assert.ok(incompletePresentationResponses.every((response) => response.status === 200))
+  const incompleteFinalize = await request(`/api/admin/presentation-replacement-sessions/${incomplete.sessionId}/finalize`, {
+    method: 'POST', headers,
+  })
+  assert.equal(incompleteFinalize.status, 409)
+  await assertLiveVersionIntact()
+
+  const corrupt = await createSession()
+  const corruptChunk = replacementBuffer.subarray(0, Math.min(corrupt.chunkSize, replacementBuffer.length))
+  const corruptChunkRoute = `/api/admin/presentation-replacement-sessions/${corrupt.sessionId}/assets/presentation/chunks/0`
+  const badHashResponse = await request(corruptChunkRoute, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': '0'.repeat(64) },
+    body: corruptChunk,
+  })
+  assert.equal(badHashResponse.status, 400)
+  const outOfRangeResponse = await request(
+    `/api/admin/presentation-replacement-sessions/${corrupt.sessionId}/assets/presentation/chunks/${corrupt.assets.presentation.chunkCount}`,
+    {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256(corruptChunk) },
+      body: corruptChunk,
+    },
+  )
+  assert.equal(outOfRangeResponse.status, 400)
+  const acceptedChunk = await request(corruptChunkRoute, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256(corruptChunk) },
+    body: corruptChunk,
+  })
+  assert.equal(acceptedChunk.status, 200)
+  const conflictingChunk = Buffer.from(corruptChunk)
+  conflictingChunk[0] ^= 0xff
+  const conflictResponse = await request(corruptChunkRoute, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': sha256(conflictingChunk) },
+    body: conflictingChunk,
+  })
+  assert.equal(conflictResponse.status, 409)
+  await assertLiveVersionIntact()
+
+  const wrongManifest = await createSession(replacementSessionBody(replacementBuffer, replacementPreviews, {
+    presentationSha256: 'f'.repeat(64),
+  }))
+  const [wrongPresentationResponses, wrongPreviewResponses] = await Promise.all([
+    uploadReplacementAsset({
+      request, headers, sessionId: wrongManifest.sessionId, asset: 'presentation', buffer: replacementBuffer,
+      chunkSize: wrongManifest.chunkSize,
+    }),
+    uploadReplacementAsset({
+      request, headers, sessionId: wrongManifest.sessionId, asset: 'previews', buffer: replacementPreviews,
+      chunkSize: wrongManifest.chunkSize,
+    }),
+  ])
+  assert.ok([...wrongPresentationResponses, ...wrongPreviewResponses].every((response) => response.status === 200))
+  const wrongHashFinalize = await request(`/api/admin/presentation-replacement-sessions/${wrongManifest.sessionId}/finalize`, {
+    method: 'POST', headers,
+  })
+  assert.equal(wrongHashFinalize.status, 400)
+  await assertLiveVersionIntact()
 })
 
 test('reports and atomically repairs an orphaned database record when its PowerPoint file is missing', async (t) => {

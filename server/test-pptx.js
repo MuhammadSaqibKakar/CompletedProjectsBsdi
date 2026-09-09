@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 
-export async function testPresentation({ external = false, active = false, tabAligned = false, title = 'Presentation preview check' } = {}) {
+export async function testPresentation({ external = false, active = false, tabAligned = false, title = 'Presentation preview check', paddingBytes = 0 } = {}) {
   const zip = new JSZip()
   const p = 'http://schemas.openxmlformats.org/presentationml/2006/main'
   const a = 'http://schemas.openxmlformats.org/drawingml/2006/main'
@@ -14,5 +14,6 @@ export async function testPresentation({ external = false, active = false, tabAl
   }
   if (external) zip.file('ppt/slides/_rels/slide1.xml.rels', `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${r}/image" Target="https://example.invalid/image.png" TargetMode="External"/></Relationships>`)
   if (active) zip.file('ppt/vbaProject.bin', 'not executable test content')
+  if (paddingBytes) zip.file('ppt/media/test-padding.bin', Buffer.alloc(paddingBytes, 0xa5), { compression: 'STORE' })
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
 }

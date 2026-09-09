@@ -74,6 +74,195 @@ async function api(url, options = {}) {
     );
   return data;
 }
+const hexDigest = (buffer) =>
+  Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
+async function sha256File(file) {
+  return hexDigest(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
+}
+function retryPause(milliseconds, signal) {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Replacement cancelled.", "AbortError"));
+    };
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+async function uploadReplacementChunk({
+  sessionId,
+  assetName,
+  index,
+  chunk,
+  chunkHash,
+  csrfToken,
+  signal,
+}) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      const response = await fetch(
+        `/api/admin/presentation-replacement-sessions/${sessionId}/assets/${assetName}/chunks/${index}`,
+        {
+          method: "PUT",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-CSRF-Token": csrfToken,
+            "X-Chunk-SHA256": chunkHash,
+          },
+          body: chunk,
+          signal,
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        if (data.received !== true) {
+          throw Object.assign(
+            new Error("The server did not confirm this upload chunk."),
+            { status: 502 },
+          );
+        }
+        return data;
+      }
+      const error = Object.assign(
+        new Error(data.error || "A presentation upload chunk was rejected."),
+        { status: response.status },
+      );
+      if (response.status !== 429 && response.status < 500) throw error;
+      if (attempt === 5) throw error;
+    } catch (error) {
+      if (signal?.aborted || error.name === "AbortError" || attempt === 5) throw error;
+      if (error.status && error.status !== 429 && error.status < 500) throw error;
+    }
+    await retryPause(Math.min(5000, 500 * 2 ** attempt), signal);
+  }
+  throw new Error("The presentation upload could not continue.");
+}
+async function finalizeReplacement(sessionId, csrfToken, signal) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      const response = await fetch(
+        `/api/admin/presentation-replacement-sessions/${sessionId}/finalize`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "X-CSRF-Token": csrfToken },
+          signal,
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        if (
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            data.presentation?.id || "",
+          ) ||
+          data.presentation.available !== true
+        ) {
+          throw Object.assign(
+            new Error("The server did not confirm the published presentation."),
+            { status: 502 },
+          );
+        }
+        return data;
+      }
+      const error = Object.assign(
+        new Error(data.error || "The presentation could not be published."),
+        { status: response.status },
+      );
+      if (![409, 429].includes(response.status) && response.status < 500) throw error;
+      if (attempt === 5) throw error;
+    } catch (error) {
+      if (signal?.aborted || error.name === "AbortError" || attempt === 5) throw error;
+      if (error.status && ![409, 429].includes(error.status) && error.status < 500) throw error;
+    }
+    await retryPause(Math.min(5000, 750 * 2 ** attempt), signal);
+  }
+  throw new Error("The presentation could not be published.");
+}
+async function replacePresentationResumably({
+  presentationId,
+  presentationFile,
+  previewFile,
+  title,
+  csrfToken,
+  signal,
+  onProgress,
+}) {
+  onProgress({ label: "Checking PowerPoint integrity…", value: 0 });
+  const presentationHash = await sha256File(presentationFile);
+  if (signal.aborted) throw new DOMException("Replacement cancelled.", "AbortError");
+  onProgress({ label: "Checking slide preview integrity…", value: 0 });
+  const previewHash = await sha256File(previewFile);
+  if (signal.aborted) throw new DOMException("Replacement cancelled.", "AbortError");
+  onProgress({ label: "Starting secure resumable upload…", value: 0 });
+  const upload = await api(
+    `/api/admin/presentations/${presentationId}/replacement-sessions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({
+        title,
+        assets: {
+          presentation: {
+            name: presentationFile.name,
+            size: presentationFile.size,
+            sha256: presentationHash,
+          },
+          previews: {
+            name: previewFile.name,
+            size: previewFile.size,
+            sha256: previewHash,
+          },
+        },
+      }),
+      signal,
+    },
+  );
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      upload.sessionId || "",
+    ) ||
+    !Number.isSafeInteger(upload.chunkSize) ||
+    upload.chunkSize < 1 ||
+    upload.chunkSize > 16 * 1024 * 1024
+  ) {
+    throw new Error("The server returned invalid upload details.");
+  }
+  const assets = [
+    ["presentation", presentationFile, "Uploading corrected PowerPoint…"],
+    ["previews", previewFile, "Uploading matching slide previews…"],
+  ];
+  const totalBytes = presentationFile.size + previewFile.size;
+  let uploadedBytes = 0;
+  for (const [assetName, file, label] of assets) {
+    const chunkCount = upload.assets?.[assetName]?.chunkCount;
+    if (!Number.isSafeInteger(chunkCount) || chunkCount < 1) {
+      throw new Error("The server returned invalid upload details.");
+    }
+    for (let index = 0; index < chunkCount; index += 1) {
+      const chunk = file.slice(index * upload.chunkSize, Math.min(file.size, (index + 1) * upload.chunkSize));
+      const chunkHash = await sha256File(chunk);
+      await uploadReplacementChunk({
+        sessionId: upload.sessionId,
+        assetName,
+        index,
+        chunk,
+        chunkHash,
+        csrfToken,
+        signal,
+      });
+      uploadedBytes += chunk.size;
+      onProgress({ label, value: Math.round((uploadedBytes / totalBytes) * 100) });
+    }
+  }
+  onProgress({ label: "Checking and publishing…", value: 100 });
+  return finalizeReplacement(upload.sessionId, csrfToken, signal);
+}
 function useLoad(url, revision = 0) {
   const [result, setResult] = useState({ key: "", data: null, error: "" });
   const key = `${url}:${revision}`;
@@ -967,34 +1156,18 @@ function AdminWorkspace({ catalog, session, onChange, onSignedOut }) {
           setProgress(Number.isFinite(value) ? value : 0);
         },
       });
-      const form = new FormData();
-      form.append("file", replacementFile);
-      form.append("previews", prepared.archive);
-      setProgress(0);
-      setProgressLabel("Uploading corrected presentation and previews…");
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        uploadRef.current = xhr;
-        xhr.open("POST", `/api/admin/presentations/${item.id}/replace`);
-        xhr.withCredentials = true;
-        xhr.setRequestHeader("X-CSRF-Token", session.csrfToken);
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable)
-            setProgress(Math.round((event.loaded / event.total) * 100));
-        };
-        xhr.onload = () => {
-          let data = {};
-          try {
-            data = JSON.parse(xhr.responseText);
-          } catch {
-            /* The server may return a hosting error page. */
-          }
-          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-          else reject(Object.assign(new Error(data.error || "The presentation could not be replaced."), { status: xhr.status }));
-        };
-        xhr.onerror = () => reject(new Error("The connection was interrupted. Please try again."));
-        xhr.onabort = () => reject(new Error("Replacement cancelled."));
-        xhr.send(form);
+      uploadRef.current = { abort: () => controller.abort() };
+      await replacePresentationResumably({
+        presentationId: item.id,
+        presentationFile: replacementFile,
+        previewFile: prepared.archive,
+        title: item.title,
+        csrfToken: session.csrfToken,
+        signal: controller.signal,
+        onProgress: ({ label, value }) => {
+          setProgressLabel(label);
+          setProgress(Number.isFinite(value) ? value : 0);
+        },
       });
       setProgress(100);
       setProgressLabel("Replacement complete.");
