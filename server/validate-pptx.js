@@ -11,6 +11,7 @@ const parser = new XMLParser({ ignoreAttributes: false, processEntities: false }
 const fail = (message) => Object.assign(new Error(message), { status: 400 })
 const WEBSITE_TEXT_PART = /^ppt\/(?:slides\/slide\d+|slideLayouts\/slideLayout\d+|slideMasters\/slideMaster\d+)\.xml$/i
 const TAB_ALIGNED_TEXT = /<a:t\b[^>]*>[\s\S]*?(?:\t|&#(?:0*9|x0*9);)[\s\S]*?<\/a:t>/i
+const UNSUPPORTED_VECTOR_MEDIA = /^ppt\/media\/.+\.(?:emf|wmf)$/i
 
 function readEntry(zip, entry) {
   return new Promise((resolve, reject) => {
@@ -60,6 +61,9 @@ export async function validatePptx(filePath) {
           seen.add(name.toLowerCase())
           if (/vbaProject|\/activeX\/|\/embeddings\/|\.html?$|\.js$|\.exe$|\.dll$/i.test(name)) {
             throw fail('Presentations with macros, embedded programs, or embedded documents are not supported.')
+          }
+          if (UNSUPPORTED_VECTOR_MEDIA.test(name)) {
+            throw fail('This presentation contains an EMF or WMF image that can appear blank on the website. Convert it to PNG or JPEG before uploading.')
           }
           if (/^ppt\/slides\/slide\d+\.xml$/.test(name)) slideCount += 1
           if (slideCount > 500) throw fail('A presentation can contain at most 500 slides.')

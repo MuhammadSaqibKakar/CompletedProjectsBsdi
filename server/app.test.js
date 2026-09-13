@@ -601,6 +601,7 @@ test('rejects disguised files, active content and externally linked decks withou
     ['macro.pptx', await testPresentation({ active: true })],
     ['linked.pptx', await testPresentation({ external: true })],
     ['tab-aligned.pptx', await testPresentation({ tabAligned: true })],
+    ['vector-image.pptx', await testPresentation({ vectorMedia: true })],
   ]) {
     const form = new FormData()
     form.set('file', new Blob([buffer]), name)

@@ -15,7 +15,7 @@ import { validatePptx, MAX_UPLOAD_BYTES } from './validate-pptx.js'
 import { validateAndExtractPreviewZip, MAX_PREVIEW_ARCHIVE_BYTES } from './validate-previews.js'
 import { isolatedViewerShell, withDocumentPolicy } from './viewer-shell.js'
 
-export const release = 'district-portal-2026-09-09.3'
+export const release = 'district-portal-2026-09-13.1'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
 const SHA256 = /^[a-f0-9]{64}$/
 const REPLACEMENT_CHUNK_BYTES = 2 * 1024 * 1024

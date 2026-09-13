@@ -322,6 +322,12 @@ const size = (value) =>
     ? `${Math.max(1, Math.round(value / 1024))} KB`
     : `${(value / 1048576).toFixed(1)} MB`;
 
+const HIDDEN_PUBLIC_DISTRICT_IDS = new Set([
+  "barshore",
+  "tump",
+  "upper-dera-bugti",
+]);
+
 export default function App() {
   const [today] = useState(() => Date.now());
   const [pathname, setPathname] = useState(window.location.pathname);
@@ -501,7 +507,9 @@ function Dashboard({ catalog, retry }) {
   );
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const districts = catalog.data?.districts || [];
+  const districts = (catalog.data?.districts || []).filter(
+    (district) => !HIDDEN_PUBLIC_DISTRICT_IDS.has(district.id),
+  );
   const visible = districts.filter(
     (district) =>
       district.name.toLowerCase().includes(search.trim().toLowerCase()) &&

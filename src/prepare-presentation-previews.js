@@ -4,6 +4,7 @@ const TARGET_LONG_EDGE = 1600;
 const JPEG_QUALITY = 0.9;
 const WEBSITE_TEXT_PART = /^ppt\/(?:slides\/slide\d+|slideLayouts\/slideLayout\d+|slideMasters\/slideMaster\d+)\.xml$/i;
 const TAB_ALIGNED_TEXT = /<a:t\b[^>]*>[\s\S]*?(?:\t|&#(?:0*9|x0*9);)[\s\S]*?<\/a:t>/i;
+const UNSUPPORTED_VECTOR_MEDIA = /^ppt\/media\/.+\.(?:emf|wmf)$/i;
 
 function abortError() {
   return new DOMException("Preview preparation was cancelled.", "AbortError");
@@ -95,6 +96,15 @@ async function dataUrlBytes(dataUrl) {
 
 async function assertRendererSafeText(buffer, JSZip, signal) {
   const packageZip = await JSZip.loadAsync(buffer);
+  const unsupportedVector = Object.keys(packageZip.files).find(
+    (name) =>
+      UNSUPPORTED_VECTOR_MEDIA.test(name) && !packageZip.files[name].dir,
+  );
+  if (unsupportedVector) {
+    throw new Error(
+      "This PowerPoint contains an EMF or WMF image that can appear blank on the website. Convert it to PNG or JPEG before uploading.",
+    );
+  }
   const textParts = Object.keys(packageZip.files).filter(
     (name) => WEBSITE_TEXT_PART.test(name) && !packageZip.files[name].dir,
   );
