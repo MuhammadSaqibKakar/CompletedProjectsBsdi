@@ -6,6 +6,7 @@ import { deriveHostingerDataDir, prepareProductionDataDir } from './persistent-d
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let storage
+let startupStage = 'storage configuration'
 
 async function start() {
   const configuredDataDir = process.env.BSDI_DATA_DIR
@@ -15,6 +16,7 @@ async function start() {
   storage = createPortalStorage({ dataDir })
   const production = process.env.NODE_ENV === 'production' || storage.mode === 'mysql' || /^(1|true|required)$/i.test(process.env.BSDI_REQUIRE_MYSQL || '')
   if (production) {
+    startupStage = 'persistent storage preparation'
     try {
       const prepared = await prepareProductionDataDir({ configuredPath: configuredDataDir, deploymentRoot: rootDir })
       dataDir = prepared.dataDir
@@ -32,8 +34,11 @@ async function start() {
     }
     storage = createPortalStorage({ dataDir })
   }
+  startupStage = 'database initialization'
   await storage.initialize()
+  startupStage = 'application initialization'
   const app = await createApp({ rootDir, dataDir, storage, fileStorageSource, fileStorageIssue })
+  startupStage = 'server listen'
   const server = app.listen(Number(process.env.PORT || 4174), () => {
     console.log('Completed Projects district portal ready; storage=' + storage.mode)
   })
@@ -48,7 +53,7 @@ async function start() {
 }
 // Some hosting launchers require the entry module synchronously.
 start().catch(async () => {
-  console.error('Portal startup failed. Check the database and persistent storage configuration.')
+  console.error(`Portal startup failed during ${startupStage}.`)
   await storage?.close().catch(() => {})
   process.exitCode = 1
 })
