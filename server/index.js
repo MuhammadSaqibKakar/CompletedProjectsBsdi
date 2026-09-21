@@ -34,20 +34,19 @@ async function start() {
   const production = process.env.NODE_ENV === 'production' || storage.mode === 'mysql' || /^(1|true|required)$/i.test(process.env.BSDI_REQUIRE_MYSQL || '')
   if (production) {
     startupStage = 'persistent storage preparation'
-    try {
+    const hostingerDataDir = deriveHostingerDataDir(rootDir)
+    if (hostingerDataDir) {
+      // Hostinger's deployment filesystem can block on realpath/fsync probes long
+      // enough for its supervisor to kill an otherwise healthy web process. The
+      // directory is deterministically derived outside hbuilds/nodejs; createApp
+      // performs the concrete directory checks before serving presentation files.
+      dataDir = hostingerDataDir
+      fileStorageSource = 'hostinger'
+      console.warn('Using durable Hostinger presentation storage outside deployment directories.')
+    } else {
       const prepared = await prepareProductionDataDir({ configuredPath: configuredDataDir, deploymentRoot: rootDir })
       dataDir = prepared.dataDir
       fileStorageSource = prepared.source
-      if (prepared.source === 'hostinger') {
-        console.warn('Using durable Hostinger presentation storage outside deployment directories.')
-      }
-    } catch (error) {
-      const legacyPath = typeof configuredDataDir === 'string' && path.isAbsolute(configuredDataDir)
-      if (!deriveHostingerDataDir(rootDir) || !legacyPath) throw error
-      dataDir = path.resolve(configuredDataDir)
-      fileStorageSource = 'configured-fallback'
-      fileStorageIssue = error.message
-      console.error('Durable Hostinger presentation storage is unavailable; using the prior configured location temporarily.')
     }
     storage = createPortalStorage({ dataDir })
   }
