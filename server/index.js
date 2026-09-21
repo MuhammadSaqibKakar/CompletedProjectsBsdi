@@ -6,13 +6,17 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let storage
 let appHandler
 let startupStage = 'module loading'
+let startupFailed = false
 const bootstrap = express()
 bootstrap.use((req, res) => {
   if (appHandler) return appHandler(req, res)
-  res.set('Cache-Control', 'no-store').status(503).type('text/plain').send('Portal starting. Please retry shortly.')
+  res.set('Cache-Control', 'no-store')
+  if (startupFailed) return res.status(503).type('text/plain').send('Portal is temporarily unavailable.')
+  if (req.path === '/api/health') return res.status(200).json({ ok: false, starting: true })
+  res.status(200).type('text/plain').send('Portal starting. Please retry shortly.')
 })
 // Hostinger requires listen() before asynchronous storage and database setup.
-const port = Number(process.env.PORT || 4174)
+const port = Number(process.env.PORT || 3000)
 const server = bootstrap.listen(port, '0.0.0.0', () => {
   console.log(`Completed Projects district portal listener ready on 0.0.0.0:${port}.`)
 })
@@ -69,6 +73,7 @@ process.once('SIGTERM', stop)
 process.once('SIGINT', stop)
 // Some hosting launchers require the entry module synchronously.
 start().catch(async () => {
+  startupFailed = true
   console.error(`Portal startup failed during ${startupStage}.`)
   await storage?.close().catch(() => {})
 })
