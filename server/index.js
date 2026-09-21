@@ -1,14 +1,11 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
-import { createPortalStorage } from './portal-storage.js'
-import { createApp } from './app.js'
-import { deriveHostingerDataDir, prepareProductionDataDir } from './persistent-data-dir.js'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let storage
 let appHandler
-let startupStage = 'storage configuration'
+let startupStage = 'module loading'
 const bootstrap = express()
 bootstrap.use((req, res) => {
   if (appHandler) return appHandler(req, res)
@@ -20,6 +17,12 @@ const server = bootstrap.listen(Number(process.env.PORT || 4174), () => {
 })
 
 async function start() {
+  const [{ createPortalStorage }, { createApp }, { deriveHostingerDataDir, prepareProductionDataDir }] = await Promise.all([
+    import('./portal-storage.js'),
+    import('./app.js'),
+    import('./persistent-data-dir.js'),
+  ])
+  startupStage = 'storage configuration'
   const configuredDataDir = process.env.BSDI_DATA_DIR
   let dataDir = path.resolve(configuredDataDir || path.join(rootDir, 'server-data'))
   let fileStorageSource = 'local'
