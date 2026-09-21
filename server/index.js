@@ -12,17 +12,20 @@ bootstrap.use((req, res) => {
   res.set('Cache-Control', 'no-store').status(503).type('text/plain').send('Portal starting. Please retry shortly.')
 })
 // Hostinger requires listen() before asynchronous storage and database setup.
-const server = bootstrap.listen(Number(process.env.PORT || 4174), () => {
-  console.log('Completed Projects district portal listener ready.')
+const port = Number(process.env.PORT || 4174)
+const server = bootstrap.listen(port, '0.0.0.0', () => {
+  console.log(`Completed Projects district portal listener ready on 0.0.0.0:${port}.`)
 })
 
 async function start() {
+  console.log('Portal startup stage: loading modules.')
   const [{ createPortalStorage }, { createApp }, { deriveHostingerDataDir, prepareProductionDataDir }] = await Promise.all([
     import('./portal-storage.js'),
     import('./app.js'),
     import('./persistent-data-dir.js'),
   ])
   startupStage = 'storage configuration'
+  console.log('Portal startup stage: storage configuration.')
   const configuredDataDir = process.env.BSDI_DATA_DIR
   let dataDir = path.resolve(configuredDataDir || path.join(rootDir, 'server-data'))
   let fileStorageSource = 'local'
@@ -49,8 +52,10 @@ async function start() {
     storage = createPortalStorage({ dataDir })
   }
   startupStage = 'database initialization'
+  console.log('Portal startup stage: database initialization.')
   await storage.initialize()
   startupStage = 'application initialization'
+  console.log('Portal startup stage: application initialization.')
   appHandler = await createApp({ rootDir, dataDir, storage, fileStorageSource, fileStorageIssue })
   startupStage = 'ready'
   console.log('Completed Projects district portal ready; storage=' + storage.mode)
