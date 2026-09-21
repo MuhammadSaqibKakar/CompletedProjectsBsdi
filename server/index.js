@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { createPortalStorage } from './portal-storage.js'
 import { createApp } from './app.js'
@@ -6,7 +7,17 @@ import { deriveHostingerDataDir, prepareProductionDataDir } from './persistent-d
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let storage
+let appHandler
 let startupStage = 'storage configuration'
+const server = createServer((req, res) => {
+  if (appHandler) return appHandler(req, res)
+  res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
+  res.end('Portal starting. Please retry shortly.')
+})
+// Hostinger requires listen() before asynchronous storage and database setup.
+server.listen(Number(process.env.PORT || 4174), () => {
+  console.log('Completed Projects district portal listener ready.')
+})
 
 async function start() {
   const configuredDataDir = process.env.BSDI_DATA_DIR
@@ -37,23 +48,20 @@ async function start() {
   startupStage = 'database initialization'
   await storage.initialize()
   startupStage = 'application initialization'
-  const app = await createApp({ rootDir, dataDir, storage, fileStorageSource, fileStorageIssue })
-  startupStage = 'server listen'
-  const server = app.listen(Number(process.env.PORT || 4174), () => {
-    console.log('Completed Projects district portal ready; storage=' + storage.mode)
-  })
-  function stop() {
-    server.close(async () => {
-      await storage.close()
-      process.exit(0)
-    })
-  }
-  process.once('SIGTERM', stop)
-  process.once('SIGINT', stop)
+  appHandler = await createApp({ rootDir, dataDir, storage, fileStorageSource, fileStorageIssue })
+  startupStage = 'ready'
+  console.log('Completed Projects district portal ready; storage=' + storage.mode)
 }
+function stop() {
+  server.close(async () => {
+    await storage?.close().catch(() => {})
+    process.exit(0)
+  })
+}
+process.once('SIGTERM', stop)
+process.once('SIGINT', stop)
 // Some hosting launchers require the entry module synchronously.
 start().catch(async () => {
   console.error(`Portal startup failed during ${startupStage}.`)
   await storage?.close().catch(() => {})
-  process.exitCode = 1
 })

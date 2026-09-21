@@ -6,8 +6,10 @@ import { randomUUID } from 'node:crypto'
 
 const managedDirectoryNames = new Set([
   '.next', '.output', 'build', 'builds', 'current', 'deploy', 'deployments',
-  'dist', 'nodejs', 'out', 'public_html', 'release', 'releases',
+  'dist', 'hbuilds', 'nodejs', 'out', 'public_html', 'release', 'releases',
 ])
+
+const hostingerDeploymentDirectoryNames = new Set(['hbuilds', 'nodejs'])
 
 function rawPathSegments(value, pathApi) {
   const root = pathApi.parse(value).root
@@ -46,7 +48,12 @@ export function deriveHostingerDataDir(deploymentRoot, { pathApi = path.posix } 
   const parsed = pathApi.parse(normalized)
   const segments = rawPathSegments(normalized, pathApi)
   const normalizedSegments = segments.map((part) => part.toLowerCase())
-  if (segments.length < 5 || normalizedSegments[0] !== 'home' || normalizedSegments[2] !== 'domains' || normalizedSegments[4] !== 'nodejs') return null
+  if (
+    segments.length < 5 ||
+    normalizedSegments[0] !== 'home' ||
+    normalizedSegments[2] !== 'domains' ||
+    !hostingerDeploymentDirectoryNames.has(normalizedSegments[4])
+  ) return null
   return pathApi.join(parsed.root, ...segments.slice(0, 4), 'bsdi-data')
 }
 

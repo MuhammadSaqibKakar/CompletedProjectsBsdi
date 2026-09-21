@@ -23,7 +23,7 @@ test('production storage rejects temporary and deployment-managed paths', () => 
   assert.throws(() => validatePersistentDataPath({
     configuredPath: path.join(os.tmpdir(), 'completed-projects'), deploymentRoot,
   }), /temporary directory/)
-  for (const segment of ['nodejs', 'public_html', 'dist', 'build', 'releases', 'current']) {
+  for (const segment of ['hbuilds', 'nodejs', 'public_html', 'dist', 'build', 'releases', 'current']) {
     assert.throws(() => validatePersistentDataPath({
       configuredPath: path.join(root, 'srv', segment, 'bsdi-data'), deploymentRoot, temporaryRoots: [],
     }), new RegExp(`inside ${segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
@@ -37,6 +37,14 @@ test('Hostinger deployment roots derive a durable domain sibling', () => {
   )
   assert.equal(
     deriveHostingerDataDir('/home/AccountName/domains/Example.test/nodejs/current'),
+    '/home/AccountName/domains/Example.test/bsdi-data',
+  )
+  assert.equal(
+    deriveHostingerDataDir('/home/u123/domains/completedprojects.online/hbuilds/2026-09-20-2306'),
+    '/home/u123/domains/completedprojects.online/bsdi-data',
+  )
+  assert.equal(
+    deriveHostingerDataDir('/home/AccountName/domains/Example.test/HBUILDS/current'),
     '/home/AccountName/domains/Example.test/bsdi-data',
   )
   assert.equal(deriveHostingerDataDir('/srv/completedprojects/nodejs'), null)
