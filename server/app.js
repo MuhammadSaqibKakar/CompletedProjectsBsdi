@@ -64,7 +64,9 @@ export async function createApp({
   }
   // Hostinger's supervisor expects the request handler almost immediately;
   // its durable mount may take several seconds to acknowledge even a mkdir.
-  const storageDirectoriesReady = prepareStorageDirectories()
+  const storageDirectoriesReady = fileStorageSource === 'hostinger'
+    ? Promise.resolve()
+    : prepareStorageDirectories()
   if (fileStorageSource !== 'hostinger') await storageDirectoriesReady
   console.log('Portal application setup: storage preparation scheduled.')
   const passwordHash = validatePasswordHash(env.ADMIN_PASSWORD_HASH || defaultPasswordHash)
@@ -442,10 +444,7 @@ export async function createApp({
     }
   }
   if (fileStorageSource === 'hostinger') {
-    void storageDirectoriesReady
-      .then(cleanupStaleReplacementSessions)
-      .then(() => console.log('Portal temporary upload storage ready.'))
-      .catch(() => console.error('Portal durable storage background check failed.'))
+    console.log('Portal Hostinger storage checks deferred to file access.')
   } else {
     await cleanupStaleReplacementSessions()
     console.log('Portal temporary upload storage ready.')
