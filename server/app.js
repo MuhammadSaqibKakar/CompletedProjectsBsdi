@@ -52,9 +52,13 @@ export async function createApp({
   const tempDir = path.join(dataDir, 'portal', 'tmp')
   for (const directory of [filesDir, previewsDir, tempDir]) {
     await fs.mkdir(directory, { recursive: true })
-    if ((await fs.lstat(directory)).isSymbolicLink() || path.relative(directory, await fs.realpath(directory)) !== '') {
+    const directoryInfo = await fs.lstat(directory)
+    const redirected = fileStorageSource !== 'hostinger' &&
+      path.relative(directory, await fs.realpath(directory)) !== ''
+    if (directoryInfo.isSymbolicLink() || redirected) {
       throw new Error('Presentation storage must use a dedicated real directory.')
     }
+    console.log(`Portal storage directory ready: ${path.basename(directory)}.`)
   }
   const passwordHash = validatePasswordHash(env.ADMIN_PASSWORD_HASH || defaultPasswordHash)
   const cookieName = production ? '__Host-cp_session' : 'cp_session'
@@ -430,6 +434,7 @@ export async function createApp({
     }
   }
   await cleanupStaleReplacementSessions()
+  console.log('Portal temporary upload storage ready.')
   // Hostinger places the Node process behind its local reverse proxy.
   app.set('trust proxy', 'loopback, linklocal, uniquelocal')
   app.disable('x-powered-by')
