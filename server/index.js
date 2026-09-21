@@ -1,6 +1,6 @@
 import path from 'node:path'
-import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
+import express from 'express'
 import { createPortalStorage } from './portal-storage.js'
 import { createApp } from './app.js'
 import { deriveHostingerDataDir, prepareProductionDataDir } from './persistent-data-dir.js'
@@ -9,13 +9,13 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let storage
 let appHandler
 let startupStage = 'storage configuration'
-const server = createServer((req, res) => {
+const bootstrap = express()
+bootstrap.use((req, res) => {
   if (appHandler) return appHandler(req, res)
-  res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
-  res.end('Portal starting. Please retry shortly.')
+  res.set('Cache-Control', 'no-store').status(503).type('text/plain').send('Portal starting. Please retry shortly.')
 })
 // Hostinger requires listen() before asynchronous storage and database setup.
-server.listen(Number(process.env.PORT || 4174), () => {
+const server = bootstrap.listen(Number(process.env.PORT || 4174), () => {
   console.log('Completed Projects district portal listener ready.')
 })
 
