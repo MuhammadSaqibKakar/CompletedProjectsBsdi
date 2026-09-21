@@ -17,8 +17,8 @@ bootstrap.use((req, res) => {
 })
 // Hostinger requires listen() before asynchronous storage and database setup.
 const port = Number(process.env.PORT || 3000)
-const server = bootstrap.listen(port, '0.0.0.0', () => {
-  console.log(`Completed Projects district portal listener ready on 0.0.0.0:${port}.`)
+const server = bootstrap.listen(port, () => {
+  console.log(`Completed Projects district portal listener ready on port ${port}.`)
 })
 
 async function start() {
@@ -63,14 +63,15 @@ async function start() {
   startupStage = 'ready'
   console.log('Completed Projects district portal ready; storage=' + storage.mode)
 }
-function stop() {
+function stop(signal) {
+  console.warn(`Completed Projects district portal received ${signal}.`)
   server.close(async () => {
     await storage?.close().catch(() => {})
     process.exit(0)
   })
 }
-process.once('SIGTERM', stop)
-process.once('SIGINT', stop)
+process.once('SIGTERM', () => stop('SIGTERM'))
+process.once('SIGINT', () => stop('SIGINT'))
 // Some hosting launchers require the entry module synchronously.
 start().catch(async () => {
   startupFailed = true
