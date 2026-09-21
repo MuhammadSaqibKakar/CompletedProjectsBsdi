@@ -66,10 +66,12 @@ export async function createApp({
   // its durable mount may take several seconds to acknowledge even a mkdir.
   const storageDirectoriesReady = prepareStorageDirectories()
   if (fileStorageSource !== 'hostinger') await storageDirectoriesReady
+  console.log('Portal application setup: storage preparation scheduled.')
   const passwordHash = validatePasswordHash(env.ADMIN_PASSWORD_HASH || defaultPasswordHash)
   const cookieName = production ? '__Host-cp_session' : 'cp_session'
   const cookieOptions = { httpOnly: true, secure: production, sameSite: 'strict', path: '/' }
   const app = express()
+  console.log('Portal application setup: Express shell created.')
 
   function previewDirectory(id) {
     if (!UUID.test(id)) throw Object.assign(new Error('Invalid presentation identifier.'), { status: 400 })
@@ -448,6 +450,7 @@ export async function createApp({
     await cleanupStaleReplacementSessions()
     console.log('Portal temporary upload storage ready.')
   }
+  console.log('Portal application setup: storage maintenance configured.')
   // Hostinger places the Node process behind its local reverse proxy.
   app.set('trust proxy', 'loopback, linklocal, uniquelocal')
   app.disable('x-powered-by')
@@ -473,6 +476,7 @@ export async function createApp({
   app.use('/api', rateLimit({ windowMs: 60000, limit: 240, standardHeaders: 'draft-8', legacyHeaders: false,
     message: { error: 'Too many requests. Please wait a moment and try again.' } }))
   app.use(express.json({ limit: '8kb', strict: true }))
+  console.log('Portal application setup: core middleware ready.')
 
   function requireOrigin(req, res, next) {
     const allowed = env.PUBLIC_ORIGIN || (production ? 'https://completedprojects.online' : `${req.protocol}://${req.get('host')}`)
@@ -585,6 +589,7 @@ export async function createApp({
       callback(Object.assign(new Error('Choose the generated preview ZIP.'), { status: 400 }))
     },
   })
+  console.log('Portal application setup: upload middleware ready.')
   // Authentication and CSRF checks run before multipart data reaches disk.
   app.post('/api/admin/districts/:id/presentations', requireOrigin, requireAdmin, requireCsrf,
     (req, res, next) => districtById.has(req.params.id) ? next() : res.status(404).json({ error: 'District not found.' }),
@@ -1043,5 +1048,6 @@ export async function createApp({
     console.error('Portal request failed:', error.code || error.name)
     res.status(503).json({ error: 'The request could not be completed. Please try again.' })
   })
+  console.log('Portal application setup: routes ready.')
   return app
 }
