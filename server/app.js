@@ -562,8 +562,14 @@ export async function createApp({
     res.json({ ok: true })
   })
 
+  const uploadStorage = multer.diskStorage({
+    destination: (_req, _file, callback) => {
+      fs.mkdir(tempDir, { recursive: true })
+        .then(() => callback(null, tempDir), (error) => callback(error))
+    },
+  })
   const upload = multer({
-    dest: tempDir,
+    storage: uploadStorage,
     limits: { fileSize: Math.max(MAX_UPLOAD_BYTES, MAX_PREVIEW_ARCHIVE_BYTES), files: 2, fields: 1, fieldSize: 640, parts: 4 },
     fileFilter: (_req, file, callback) => {
       if (file.fieldname === 'file' && /\.pptx$/i.test(file.originalname)) return callback(null, true)
@@ -572,7 +578,7 @@ export async function createApp({
     },
   })
   const previewOnlyUpload = multer({
-    dest: tempDir,
+    storage: uploadStorage,
     limits: { fileSize: MAX_PREVIEW_ARCHIVE_BYTES, files: 1, fields: 1, parts: 2 },
     fileFilter: (_req, file, callback) => {
       if (file.fieldname === 'previews' && /\.zip$/i.test(file.originalname)) return callback(null, true)
