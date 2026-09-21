@@ -15,10 +15,10 @@ bootstrap.use((req, res) => {
   if (req.path === '/api/health') return res.status(200).json({ ok: false, starting: true })
   res.status(200).type('text/plain').send('Portal starting. Please retry shortly.')
 })
-// Hostinger proxies to IPv4 port 3000 and requires the listener immediately.
+// Hostinger's managed proxy connects to the app over the local IPv4 loopback.
 const port = Number(process.env.PORT || 3000)
-const server = bootstrap.listen(port, '0.0.0.0', () => {
-  console.log(`Completed Projects district portal listener ready on 0.0.0.0:${port}.`)
+const server = bootstrap.listen(port, '127.0.0.1', () => {
+  console.log(`Completed Projects district portal listener ready on 127.0.0.1:${port}.`)
 })
 
 async function start() {
