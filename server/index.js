@@ -46,8 +46,8 @@ async function start() {
   const app = await createApp({ rootDir, dataDir, storage, fileStorageSource, fileStorageIssue })
   startupStage = 'ready'
   const port = Number(process.env.PORT || 3000)
-  const server = app.listen(port, () => {
-    console.log(`Completed Projects district portal ready on port ${port}; storage=${storage.mode}`)
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`Completed Projects district portal ready on 0.0.0.0:${port}; storage=${storage.mode}`)
   })
   function stop(signal) {
     console.warn(`Completed Projects district portal received ${signal}.`)
