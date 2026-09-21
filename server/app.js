@@ -50,16 +50,22 @@ export async function createApp({
   const filesDir = path.join(dataDir, 'portal', 'files')
   const previewsDir = path.join(dataDir, 'portal', 'previews')
   const tempDir = path.join(dataDir, 'portal', 'tmp')
-  for (const directory of [filesDir, previewsDir, tempDir]) {
-    await fs.mkdir(directory, { recursive: true })
-    const directoryInfo = await fs.lstat(directory)
-    const redirected = fileStorageSource !== 'hostinger' &&
-      path.relative(directory, await fs.realpath(directory)) !== ''
-    if (directoryInfo.isSymbolicLink() || redirected) {
-      throw new Error('Presentation storage must use a dedicated real directory.')
+  async function prepareStorageDirectories() {
+    for (const directory of [filesDir, previewsDir, tempDir]) {
+      await fs.mkdir(directory, { recursive: true })
+      const directoryInfo = await fs.lstat(directory)
+      const redirected = fileStorageSource !== 'hostinger' &&
+        path.relative(directory, await fs.realpath(directory)) !== ''
+      if (directoryInfo.isSymbolicLink() || redirected) {
+        throw new Error('Presentation storage must use a dedicated real directory.')
+      }
+      console.log(`Portal storage directory ready: ${path.basename(directory)}.`)
     }
-    console.log(`Portal storage directory ready: ${path.basename(directory)}.`)
   }
+  // Hostinger's supervisor expects the request handler almost immediately;
+  // its durable mount may take several seconds to acknowledge even a mkdir.
+  const storageDirectoriesReady = prepareStorageDirectories()
+  if (fileStorageSource !== 'hostinger') await storageDirectoriesReady
   const passwordHash = validatePasswordHash(env.ADMIN_PASSWORD_HASH || defaultPasswordHash)
   const cookieName = production ? '__Host-cp_session' : 'cp_session'
   const cookieOptions = { httpOnly: true, secure: production, sameSite: 'strict', path: '/' }
@@ -433,8 +439,15 @@ export async function createApp({
       }
     }
   }
-  await cleanupStaleReplacementSessions()
-  console.log('Portal temporary upload storage ready.')
+  if (fileStorageSource === 'hostinger') {
+    void storageDirectoriesReady
+      .then(cleanupStaleReplacementSessions)
+      .then(() => console.log('Portal temporary upload storage ready.'))
+      .catch(() => console.error('Portal durable storage background check failed.'))
+  } else {
+    await cleanupStaleReplacementSessions()
+    console.log('Portal temporary upload storage ready.')
+  }
   // Hostinger places the Node process behind its local reverse proxy.
   app.set('trust proxy', 'loopback, linklocal, uniquelocal')
   app.disable('x-powered-by')
